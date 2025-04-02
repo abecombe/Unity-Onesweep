@@ -1,0 +1,70 @@
+﻿// This file includes code adapted from GPUSorting by Thomas Smith
+// https://github.com/b0nes164/GPUSorting
+// Licensed under the MIT License
+// Modified by abecombe, 2025
+
+#pragma kernel BuildRadixBucketGlobalHistogram
+
+#pragma multi_compile KEY_TYPE_UINT KEY_TYPE_INT KEY_TYPE_FLOAT
+#pragma multi_compile SORTING_ORDER_ASCENDING SORTING_ORDER_DESCENDING
+#pragma multi_compile USE_DIRECT_DISPATCH USE_INDIRECT_DISPATCH
+
+#include "Radix.hlsl"
+#include "DispatchUtils.hlsl"
+
+#define ITEMS_PER_THREAD (64u)
+
+#define THREADS_PER_GROUP (128u)
+#define ITEMS_PER_GROUP (ITEMS_PER_THREAD * THREADS_PER_GROUP)
+
+RWStructuredBuffer<uint> bucket_count_buffer; // size: RADIX_BASE * RADIX_STEP_COUNT
+StructuredBuffer<DATA_TYPE> key_in_buffer;
+
+#define GROUP_SHARED_SIZE (RADIX_BASE * 2u)
+groupshared uint4 group_shared[GROUP_SHARED_SIZE];
+
+/**
+ * \brief Builds the global histogram of the radix buckets.
+ *
+ * \note dispatch group size: ceil(sort_item_count / ITEMS_PER_GROUP)
+ *
+ * Each thread group computes a local histogram for a subset of the data
+ * using shared memory, and then merges it into the global histogram buffer
+ * using atomic operations.
+ */
+[numthreads(THREADS_PER_GROUP, 1, 1)]
+void BuildRadixBucketGlobalHistogram(uint group_thread_id : SV_GroupThreadID, uint group_id : SV_GroupID)
+{
+#if defined(USE_INDIRECT_DISPATCH)
+    const uint sort_count = get_sort_count();
+#endif
+
+    [unroll(GROUP_SHARED_SIZE / THREADS_PER_GROUP)]
+    for (uint i = group_thread_id; i < GROUP_SHARED_SIZE; i += THREADS_PER_GROUP)
+        group_shared[i] = 0u;
+
+    GroupMemoryBarrierWithGroupSync();
+
+    const uint group_shared_offset = (group_thread_id >> 6u) * RADIX_BASE; // 0, 0, ... , 0, 256, 256, ... , 256
+    const uint group_item_end = min(sort_count, (group_id + 1u) * ITEMS_PER_GROUP);
+
+    for (uint j = group_thread_id + group_id * ITEMS_PER_GROUP; j < group_item_end; j += THREADS_PER_GROUP)
+    {
+        const uint sorting_key = from_original_key_to_sorting_key(key_in_buffer[j]);
+        InterlockedAdd(group_shared[get_radix_digit(sorting_key,  0u) + group_shared_offset].x, 1u);
+        InterlockedAdd(group_shared[get_radix_digit(sorting_key,  8u) + group_shared_offset].y, 1u);
+        InterlockedAdd(group_shared[get_radix_digit(sorting_key, 16u) + group_shared_offset].z, 1u);
+        InterlockedAdd(group_shared[get_radix_digit(sorting_key, 24u) + group_shared_offset].w, 1u);
+    }
+
+    GroupMemoryBarrierWithGroupSync();
+
+    [unroll(RADIX_BASE / THREADS_PER_GROUP)]
+    for (uint k = group_thread_id; k < RADIX_BASE; k += THREADS_PER_GROUP)
+    {
+        InterlockedAdd(bucket_count_buffer[k                  ], group_shared[k].x + group_shared[k + RADIX_BASE].x);
+        InterlockedAdd(bucket_count_buffer[k + RADIX_BASE * 1u], group_shared[k].y + group_shared[k + RADIX_BASE].y);
+        InterlockedAdd(bucket_count_buffer[k + RADIX_BASE * 2u], group_shared[k].z + group_shared[k + RADIX_BASE].z);
+        InterlockedAdd(bucket_count_buffer[k + RADIX_BASE * 3u], group_shared[k].w + group_shared[k + RADIX_BASE].w);
+    }
+}

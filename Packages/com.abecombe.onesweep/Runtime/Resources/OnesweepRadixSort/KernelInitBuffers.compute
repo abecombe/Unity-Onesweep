@@ -1,0 +1,49 @@
+﻿// This file includes code adapted from GPUSorting by Thomas Smith
+// https://github.com/b0nes164/GPUSorting
+// Licensed under the MIT License
+// Modified by abecombe, 2025
+
+#pragma kernel InitBuffers
+
+#pragma multi_compile USE_DIRECT_DISPATCH USE_INDIRECT_DISPATCH
+
+#include "Radix.hlsl"
+#include "PartitionDescriptor.hlsl"
+#include "DispatchUtils.hlsl"
+
+#define DISPATCH_GROUP_SIZE (128u)
+#define THREADS_PER_GROUP (256u)
+#define DISPATCH_THREAD_SIZE (DISPATCH_GROUP_SIZE * THREADS_PER_GROUP)
+
+RWStructuredBuffer<uint> bucket_count_buffer; // size: RADIX_BASE * RADIX_STEP_COUNT
+RWStructuredBuffer<uint> partition_index_buffer; // size: RADIX_STEP_COUNT
+RWStructuredBuffer<PARTITION_DESCRIPTOR> partition_descriptor_buffer; // size: RADIX_BASE * group_count * RADIX_STEP_COUNT
+
+/**
+ * \brief Initializes buffers used in radix sort.
+ *
+ * \note Dispatch group size: DISPATCH_GROUP_SIZE
+ *
+ * This function clears or initializes:
+ *  - The partition descriptor buffer
+ *  - The radix bucket count buffer
+ *  - The partition index buffer
+ */
+[numthreads(THREADS_PER_GROUP, 1, 1)]
+void InitBuffers(uint thread_id : SV_DispatchThreadID)
+{
+#if defined(USE_INDIRECT_DISPATCH)
+    const uint group_count = get_group_count();
+#endif
+
+    for (uint i = thread_id; i < RADIX_BASE * group_count * RADIX_STEP_COUNT; i += DISPATCH_THREAD_SIZE)
+        partition_descriptor_buffer[i] = create_partition_descriptor(0u, FLAG_INVALID);
+
+    if (thread_id >= RADIX_BASE * RADIX_STEP_COUNT) return;
+
+    bucket_count_buffer[thread_id] = 0u;
+
+    if (thread_id >= RADIX_STEP_COUNT) return;
+
+    partition_index_buffer[thread_id] = 0u;
+}

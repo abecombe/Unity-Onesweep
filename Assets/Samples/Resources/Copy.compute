@@ -1,0 +1,23 @@
+﻿#pragma kernel CopySortBuffer
+
+#define NUM_GROUP_THREADS 128
+#define KEY_TYPE uint
+
+int num_elements;
+int group_offset;
+
+StructuredBuffer<KEY_TYPE> key_temp_buffer;
+StructuredBuffer<uint> index_temp_buffer;
+RWStructuredBuffer<KEY_TYPE> key_buffer;
+RWStructuredBuffer<uint> index_buffer;
+
+[numthreads(NUM_GROUP_THREADS, 1, 1)]
+void CopySortBuffer(int thread_id : SV_DispatchThreadID)
+{
+    thread_id += group_offset * NUM_GROUP_THREADS;
+    if (thread_id < num_elements)
+    {
+        key_buffer[thread_id] = key_temp_buffer[thread_id];
+        index_buffer[thread_id] = index_temp_buffer[thread_id];
+    }
+}

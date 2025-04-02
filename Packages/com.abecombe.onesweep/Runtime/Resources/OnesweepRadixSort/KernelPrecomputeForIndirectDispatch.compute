@@ -1,0 +1,38 @@
+﻿#pragma kernel PrecomputeForIndirectDispatch
+
+uint build_kernel_items_per_group;
+uint sort_kernel_items_per_group;
+
+uint max_sort_count;
+
+StructuredBuffer<uint> sort_count_buffer;
+uint sort_count_buffer_offset;
+
+RWStructuredBuffer<uint> build_kernel_dispatch_args_buffer;
+RWStructuredBuffer<uint> sort_kernel_dispatch_args_buffer;
+RWByteAddressBuffer sort_count_group_count_buffer;
+
+/**
+ * \brief Precomputes group counts for indirect dispatch based on sort count.
+ *
+ * \note Dispatch group size: 1 (3 threads used internally)
+ *
+ * This kernel computes:
+ *  - Number of thread groups needed to run the build histogram kernel
+ *  - Number of thread groups needed to run the sort kernel
+ *  - Stores both sort count and sort kernel group count for indirect dispatching
+ */
+[numthreads(3, 1, 1)]
+void PrecomputeForIndirectDispatch(uint thread_id : SV_DispatchThreadID)
+{
+    const uint sort_count = min(sort_count_buffer[sort_count_buffer_offset], max_sort_count);
+
+    const uint build_kernel_group_size = (sort_count + build_kernel_items_per_group - 1u) / build_kernel_items_per_group;
+    build_kernel_dispatch_args_buffer[thread_id] = thread_id == 0u ? build_kernel_group_size : 1u;
+
+    const uint sort_kernel_group_size = (sort_count + sort_kernel_items_per_group - 1u) / sort_kernel_items_per_group;
+    sort_kernel_dispatch_args_buffer[thread_id] = thread_id == 0u ? sort_kernel_group_size : 1u;
+
+    if (thread_id == 0)
+        sort_count_group_count_buffer.Store2(0, uint2(sort_count, sort_kernel_group_size));
+}

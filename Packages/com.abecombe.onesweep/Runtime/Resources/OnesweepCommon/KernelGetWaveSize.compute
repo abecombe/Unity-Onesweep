@@ -1,0 +1,20 @@
+﻿#pragma kernel GetWaveSize
+
+#pragma use_dxc
+#pragma require wavebasic
+#pragma require waveballot
+
+RWStructuredBuffer<uint> wave_size_buffer; // size: 1
+
+/**
+ * \brief Retrieves the size of a wave (number of lanes) on the current GPU.
+ *
+ * \note Dispatch group size: 1
+ *
+ * This shader is used to dynamically query the wave size supported by the hardware (typically 32 or 64).
+ */
+[numthreads(1, 1, 1)]
+void GetWaveSize()
+{
+    wave_size_buffer[0] = WaveGetLaneCount();
+}

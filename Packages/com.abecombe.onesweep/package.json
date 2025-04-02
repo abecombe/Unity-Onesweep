@@ -1,0 +1,18 @@
+{
+  "name": "com.abecombe.onesweep",
+  "displayName": "Onesweep",
+  "version": "1.0.0",
+  "unity": "2021.3",
+  "description": "Unity-Onesweep",
+  "author": {
+    "name": "abecombe",
+    "url": "https://github.com/abecombe"
+  },
+  "keywords": [
+    "computeshader",
+    "graphicsbuffer",
+    "onesweep",
+    "sort",
+    "radixsort"
+  ]
+}
