@@ -166,6 +166,7 @@ MonoBehaviour:
   _numData: 1000000
   _randomValueMax: 100000
   _randomSeed: 0
+  _config: {fileID: 11400000, guid: ef59e34a479693946b5fd0aa03709fa6, type: 2}
 --- !u!1 &754477575
 GameObject:
   m_ObjectHideFlags: 0
