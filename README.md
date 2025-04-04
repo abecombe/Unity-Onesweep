@@ -33,28 +33,43 @@ and includes code adapted from the [GPUSorting project by Thomas Smith](https://
 
 ```csharp
 using Onesweep;
+using UnityEngine;
 
-var sorter = new RadixSort();
-sorter.Init(
-    maxSortCount: 65536,
-    keyType: KeyType.UInt,
-    sortingOrder: SortingOrder.Ascending,
-    dispatchMode: DispatchMode.Direct,
-    waveSize: WaveSize.Unknown
-);
+public class MySorterBehaviour : MonoBehaviour
+{
+    // Assign this from the Inspector.
+    // The asset is included in the package at:
+    // "Packages/Onesweep/Runtime/OnesweepComputeConfig.asset"
+    [SerializeField] private OnesweepComputeConfig config;
 
-sorter.Sort(keyBuffer, indexBuffer, sortCount);
-```
+    private RadixSort sorter = new();
 
-For indirect dispatch using `GraphicsBuffer`:
-```csharp
-sorter.Sort(keyBuffer, indexBuffer, sortCountBuffer, sortCountBufferOffset);
-```
+    void Start()
+    {
+        sorter.Init(
+            config,
+            maxSortCount: 65536,
+            keyType: KeyType.UInt,
+            sortingOrder: SortingOrder.Ascending,
+            dispatchMode: DispatchMode.Direct,
+            waveSize: WaveSize.Unknown
+        );
+    }
+    
+    void Update()
+    {
+        // For direct dispatch:
+        sorter.Sort(keyBuffer, indexBuffer, sortCount);
+        
+        // For indirect dispatch:
+        sorter.Sort(keyBuffer, indexBuffer, sortCountBuffer, sortCountBufferOffset);
+    }
 
-Don't forget to call:
-
-```csharp
-sorter.Dispose();
+    void OnDestroy()
+    {
+        sorter?.Dispose();
+    }
+}
 ```
 
 ## 📄 License

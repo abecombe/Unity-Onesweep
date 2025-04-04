@@ -16,6 +16,7 @@ public class RadixSortSample : MonoBehaviour
     [SerializeField] private int _numData = 100;
     [SerializeField] private int _randomValueMax = 100000;
     [SerializeField] private int _randomSeed = 0;
+    [SerializeField] private OnesweepComputeConfig _config;
 
     private RadixSort _radixSort = new();
 
@@ -52,7 +53,7 @@ public class RadixSortSample : MonoBehaviour
 
     private void Start()
     {
-        _radixSort.Init(_numData, KeyType.UInt, SortingOrder.Ascending, DispatchMode.Direct, WaveSize.Unknown);
+        _radixSort.Init(_config, _numData, KeyType.UInt, SortingOrder.Ascending, DispatchMode.Direct, WaveSize.Unknown);
 
         _keyBuffer = new GraphicsBuffer(GraphicsBuffer.Target.Structured, _numData, sizeof(type));
         _indexBuffer = new GraphicsBuffer(GraphicsBuffer.Target.Structured, _numData, sizeof(uint));

@@ -114,6 +114,9 @@ namespace Onesweep
         /// <summary>
         /// Initializes RadixSort.
         /// </summary>
+        /// <param name="onesweepComputeConfig">
+        /// Compute shader configuration for Onesweep.
+        /// </param>
         /// <param name="maxSortCount">
         /// The expected maximum number of elements to be sorted.
         /// This defines the upper limit of sortable elements for this instance.
@@ -129,7 +132,7 @@ namespace Onesweep
         /// </param>
         /// <param name="forceClearBuffers">If true, forces buffer clearing.</param>
         /// <returns>RadixSort instance for IDisposable use.</returns>
-        public IDisposable Init(int maxSortCount, KeyType keyType, SortingOrder sortingOrder, DispatchMode dispatchMode, WaveSize waveSize, bool forceClearBuffers = false)
+        public IDisposable Init(OnesweepComputeConfig onesweepComputeConfig, int maxSortCount, KeyType keyType, SortingOrder sortingOrder, DispatchMode dispatchMode, WaveSize waveSize, bool forceClearBuffers = false)
         {
             Inited = false;
 
@@ -144,7 +147,7 @@ namespace Onesweep
             WaveSize = waveSize;
             if (WaveSize == WaveSize.Unknown)
             {
-                WaveSize = GetWaveSize(out var waveSizeUInt);
+                WaveSize = GetWaveSize(onesweepComputeConfig, out var waveSizeUInt);
                 if (WaveSize == WaveSize.Unknown)
                     throw new ArgumentException($"This device wave size is {waveSizeUInt}. Wave size must be 32 or 64.");
             }
@@ -153,11 +156,11 @@ namespace Onesweep
             if (MaxSortCount > SortKernelThreadsPerGroup * SortKernelItemsPerThread * MaxDispatchSize)
                 throw new ArgumentException($"Buffer size must be less than or equal to {SortKernelThreadsPerGroup * SortKernelItemsPerThread * MaxDispatchSize}.");
 
-            _precomputeCs = Resources.Load<ComputeShader>("OnesweepRadixSort/KernelPrecomputeForIndirectDispatch");
-            _initCs = Resources.Load<ComputeShader>("OnesweepRadixSort/KernelInitBuffers");
-            _buildCs = Resources.Load<ComputeShader>("OnesweepRadixSort/KernelBuildRadixBucketGlobalHistogram");
-            _scanCs = Resources.Load<ComputeShader>("OnesweepRadixSort/KernelScanRadixBucketGlobalHistogram");
-            _sortCs = Resources.Load<ComputeShader>("OnesweepRadixSort/KernelSortOnesweep");
+            _precomputeCs = onesweepComputeConfig.PrecomputeCs;
+            _initCs = onesweepComputeConfig.InitCs;
+            _buildCs = onesweepComputeConfig.BuildCs;
+            _scanCs = onesweepComputeConfig.ScanCs;
+            _sortCs = onesweepComputeConfig.SortCs;
             _computeShaders = new[] { _initCs, _buildCs, _scanCs, _sortCs };
 
             _precomputeKernel = _precomputeCs.FindKernel("PrecomputeForIndirectDispatch");
@@ -270,13 +273,16 @@ namespace Onesweep
         /// <summary>
         /// Gets the wave size from the compute shader.
         /// </summary>
+        /// <param name="onesweepComputeConfig">
+        /// Compute shader configuration for Onesweep.
+        /// </param>
         /// <param name="waveSize">Outputs the detected wave size.</param>
         /// <returns>
         /// Returns the wave size (32 or 64). If the size is something else, returns WaveSize.Unknown.
         /// </returns>
-        public static WaveSize GetWaveSize(out uint waveSize)
+        public static WaveSize GetWaveSize(OnesweepComputeConfig onesweepComputeConfig, out uint waveSize)
         {
-            var waveSizeCs = Resources.Load<ComputeShader>("OnesweepCommon/KernelGetWaveSize");
+            var waveSizeCs = onesweepComputeConfig.WaveSizeCs;
             var waveSizeKernel = waveSizeCs.FindKernel("GetWaveSize");
             var waveSizeBuffer = new GraphicsBuffer(GraphicsBuffer.Target.Structured, 1, sizeof(uint));
             waveSizeCs.SetBuffer(waveSizeKernel, "wave_size_buffer", waveSizeBuffer);

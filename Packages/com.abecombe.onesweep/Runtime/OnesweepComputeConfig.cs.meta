@@ -1,0 +1,17 @@
+fileFormatVersion: 2
+guid: eb5ce53a3839f654fad89f70deab5623
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences:
+  - WaveSizeCs: {fileID: 7200000, guid: 63a9acc6a08a41199583af51b393e2dd, type: 3}
+  - PrecomputeCs: {fileID: 7200000, guid: 32c2fd8e4133452cb120e1010ce3e446, type: 3}
+  - InitCs: {fileID: 7200000, guid: db6ad49b80fd4793b852450035c222a2, type: 3}
+  - BuildCs: {fileID: 7200000, guid: 427999ada1784b64a555da8fd6d50081, type: 3}
+  - ScanCs: {fileID: 7200000, guid: 57068c5877214321b37c3e40b2b62f2f, type: 3}
+  - SortCs: {fileID: 7200000, guid: 6d7551ea679641fc90d4f95273baff59, type: 3}
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
