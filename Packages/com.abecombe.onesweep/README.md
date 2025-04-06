@@ -6,13 +6,28 @@ This sorting algorithm is based on the paper
 [Onesweep: A Faster Least Significant Digit Radix Sort for GPUs](https://arxiv.org/abs/2206.01784)  
 and includes code adapted from the [GPUSorting project by Thomas Smith](https://github.com/b0nes164/GPUSorting).
 
+---
+
+## ⚠️ Important Notice: Potential for Deadlocks ⚠️
+
+**Due to the nature of the Onesweep algorithm and its reliance on complex GPU synchronization, there is a possibility of encountering GPU deadlocks, which can lead to application freezes (hangs) under certain runtime conditions.**
+
+This issue may occur sporadically depending on various factors, including the specific GPU model, driver version, operating system, or conflicts with other running tasks. It is often related to the intricate scheduling and synchronization of GPU tasks.
+
+**If you experience frequent or unexplained application freezes while using Onesweep, please consider using an alternative sorting algorithm to see if the issue persists.**
+
+We apologize for any inconvenience this potential risk may cause and appreciate your understanding.
+
+---
+
 ## ✨ Features
 
 - GPU-accelerated LSD radix sort
 - Supports `uint`, `int`, and `float` keys
 - Ascending and descending order
 - Direct and indirect dispatch modes
-- Compatible with Unity’s `GraphicsBuffer` and `CommandBuffer`
+- Works with Unity's `GraphicsBuffer` for input/output data
+- Can be dispatched via `CommandBuffer` for integration into rendering pipelines
 - Wave size customization (32 / 64)
 
 ## 🚀 Requirements
