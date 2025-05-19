@@ -44,6 +44,10 @@ struct ItemsArray
 {
     uint data[ITEMS_PER_THREAD];
 };
+struct ItemsArray16bit
+{
+    min16uint data[ITEMS_PER_THREAD];
+};
 
 /**
  * \brief Computes the start index into the key and index buffers for the current thread.
@@ -59,8 +63,10 @@ inline uint GetThreadKeyIndexStartIndex(in uint group_thread_id, in uint partiti
  * \note Writes to group_shared memory:
  *       [SHARED_MEMORY_MAX_SIZE - 1u] is used to store the partition index.
  */
-inline uint GetPartitionIndex(in uint group_thread_id)
+inline uint GetPartitionIndex(in uint group_thread_id, in uint group_id)
 {
+    // return group_id;
+
     if (group_thread_id == 0u)
         InterlockedAdd(partition_index_buffer[CURRENT_RADIX_STEP(current_pass_radix_shift)], 1u, group_shared[SHARED_MEMORY_MAX_SIZE - 1u]);
     GroupMemoryBarrierWithGroupSync();
@@ -152,7 +158,7 @@ inline void ComputePrefixTotalBitCountInWave(in WAVE_MASK_TYPE bit_mask, out uin
  * \note Writes to group_shared memory:
  *       [bucket_id (0–255) + WAVE_INDEX (0–7 or 0–3) * RADIX_BASE] stores the total count of each bucket ID within a wave.
  */
-inline ItemsArray ComputeWaveLevelLocalOffsets(in uint group_thread_id, in ItemsArray keys)
+inline ItemsArray16bit ComputeWaveLevelLocalOffsets(in uint group_thread_id, in ItemsArray keys)
 {
     // Initialize group_shared memory
     [unroll(RADIX_BASE / WAVE_SIZE)]
@@ -161,7 +167,7 @@ inline ItemsArray ComputeWaveLevelLocalOffsets(in uint group_thread_id, in Items
         group_shared[i] = 0u;
     }
 
-    ItemsArray offsets;
+    ItemsArray16bit offsets;
     [unroll(ITEMS_PER_THREAD)]
     for (uint i = 0u; i < ITEMS_PER_THREAD; i++)
     {
@@ -249,7 +255,7 @@ inline void ScanBucketTotalCountExclusiveToSharedMemory(in uint group_thread_id,
 /**
  * \brief Combines per-wave local offsets to produce final group-level local offsets.
  */
-inline void UpdateLocalOffsetsFromWaveToGroupLevel(in uint group_thread_id, in ItemsArray keys, inout ItemsArray offsets)
+inline void UpdateLocalOffsetsFromWaveToGroupLevel(in uint group_thread_id, in ItemsArray keys, inout ItemsArray16bit offsets)
 {
     if (group_thread_id >= WAVE_SIZE) // WAVE_INDEX(group_thread_id) >= 1
     {
@@ -275,7 +281,7 @@ inline void UpdateLocalOffsetsFromWaveToGroupLevel(in uint group_thread_id, in I
  * \note Writes to group_shared memory:
  *       [items (0-ITEMS_PER_GROUP - 1) + RADIX_BASE(256)] stores the sorted keys.
  */
-inline void SortKeysInGroup(in ItemsArray new_ids, in ItemsArray keys)
+inline void SortKeysInGroup(in ItemsArray16bit new_ids, in ItemsArray keys)
 {
     [unroll(ITEMS_PER_THREAD)]
     for (uint i = 0; i < ITEMS_PER_THREAD; i++)
@@ -362,7 +368,7 @@ inline ItemsArray StoreKeys(in uint group_thread_id, in uint partition_index, in
  * \note Writes to group_shared memory:
  *       [items (0-ITEMS_PER_GROUP - 1) + RADIX_BASE(256)] stores the sorted indices.
  */
-inline void WriteSortedIndicesToSharedMemory(in uint group_thread_id, in uint partition_index, in uint sort_count, in uint group_count, in ItemsArray new_ids)
+inline void WriteSortedIndicesToSharedMemory(in uint group_thread_id, in uint partition_index, in uint sort_count, in uint group_count, in ItemsArray16bit new_ids)
 {
     if (partition_index < group_count - 1u)
     {
@@ -419,7 +425,7 @@ inline void StoreIndices(in uint group_thread_id, in uint partition_index, in ui
  * including local sorting, exclusive scan, offset computation, and final output writing.
  */
 [numthreads(THREADS_PER_GROUP, 1, 1)]
-void SortOnesweep(uint group_thread_id : SV_GroupThreadID)
+void SortOnesweep(uint group_id : SV_GroupID, uint group_thread_id : SV_GroupThreadID)
 {
 #if defined(USE_INDIRECT_DISPATCH)
     uint sort_count;
@@ -427,10 +433,10 @@ void SortOnesweep(uint group_thread_id : SV_GroupThreadID)
     get_sort_count_group_count(sort_count, group_count);
 #endif
 
-    const uint partition_index = GetPartitionIndex(group_thread_id);
+    const uint partition_index = GetPartitionIndex(group_thread_id, group_id);
 
     const ItemsArray keys = LoadKeys(group_thread_id, partition_index, sort_count, group_count);
-    ItemsArray offsets = ComputeWaveLevelLocalOffsets(group_thread_id, keys);
+    ItemsArray16bit offsets = ComputeWaveLevelLocalOffsets(group_thread_id, keys);
     GroupMemoryBarrierWithGroupSync();
 
     const uint bucket_total_count_in_group = ExclusiveScanBucketCountsInGroup(group_thread_id);
