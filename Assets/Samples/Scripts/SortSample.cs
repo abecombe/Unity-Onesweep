@@ -11,14 +11,14 @@ using Random = UnityEngine.Random;
 
 using type = System.UInt32;
 
-public class RadixSortSample : MonoBehaviour
+public class SortSample : MonoBehaviour
 {
     [SerializeField] private int _numData = 100;
     [SerializeField] private int _randomValueMax = 100000;
     [SerializeField] private int _randomSeed = 0;
     [SerializeField] private OnesweepComputeConfig _config;
 
-    private RadixSort _radixSort = new();
+    private Sorter _sorter = new();
 
     private GraphicsBuffer _keyBuffer;
     private GraphicsBuffer _indexBuffer;
@@ -27,10 +27,6 @@ public class RadixSortSample : MonoBehaviour
 
     private ComputeShader _copyCs;
     private int _copyKernel;
-
-    private const int NumGroupThreads = 128;
-    private const int MaxDispatchSize = 65535;
-    private int DispatchSize => (_numData + NumGroupThreads - 1) / NumGroupThreads;
 
     private KeyIndexCombine[] _combinedDataArray;
 
@@ -53,7 +49,7 @@ public class RadixSortSample : MonoBehaviour
 
     private void Start()
     {
-        _radixSort.Init(_config, _numData, KeyType.UInt, SortingOrder.Ascending, DispatchMode.Direct, WaveSize.Unknown);
+        _sorter.Init(_config, _numData, KeyType.UInt, SortingOrder.Ascending, DispatchMode.Direct, WaveSize.Unknown);
 
         _keyBuffer = new GraphicsBuffer(GraphicsBuffer.Target.Structured, _numData, sizeof(type));
         _indexBuffer = new GraphicsBuffer(GraphicsBuffer.Target.Structured, _numData, sizeof(uint));
@@ -87,13 +83,9 @@ public class RadixSortSample : MonoBehaviour
 
     private void Update()
     {
-        for (int i = 0; i < DispatchSize; i += MaxDispatchSize)
-        {
-            _copyCs.SetInt("group_offset", i);
-            _copyCs.Dispatch(_copyKernel, Mathf.Min(DispatchSize - i, MaxDispatchSize), 1, 1);
-        }
+        _copyCs.Dispatch(_copyKernel, 128, 1, 1);
 
-        _radixSort.Sort(_keyBuffer, _indexBuffer, _numData);
+        _sorter.Sort(_keyBuffer, _indexBuffer, _numData);
     }
 
     private void OnDestroy()
@@ -102,7 +94,7 @@ public class RadixSortSample : MonoBehaviour
         _indexBuffer?.Release();
         _keyTempBuffer?.Release();
         _indexTempBuffer?.Release();
-        _radixSort.Dispose();
+        _sorter.Dispose();
     }
 
     public void CheckSuccess()
@@ -111,15 +103,15 @@ public class RadixSortSample : MonoBehaviour
 
         Update();
 
-        type[] keyArr1 = new type[_numData];
-        _keyBuffer.GetData(keyArr1);
-        uint[] indexArr1 = new uint[_numData];
-        _indexBuffer.GetData(indexArr1);
-        KeyIndexCombine[] combinedDataArray1 = keyArr1.Select((key, i) => new KeyIndexCombine(key, indexArr1[i])).ToArray();
+        type[] keyArr = new type[_numData];
+        _keyBuffer.GetData(keyArr);
+        uint[] indexArr = new uint[_numData];
+        _indexBuffer.GetData(indexArr);
+        KeyIndexCombine[] combinedDataArray = keyArr.Select((key, i) => new KeyIndexCombine(key, indexArr[i])).ToArray();
 
         _combinedDataArray = _combinedDataArray.OrderBy(data => data.Key).ToArray();
 
-        if (_combinedDataArray.SequenceEqual(combinedDataArray1))
+        if (_combinedDataArray.SequenceEqual(combinedDataArray))
         {
             Debug.Log("Sorting Success");
         }
@@ -133,8 +125,8 @@ public class RadixSortSample : MonoBehaviour
 }
 
 #if UNITY_EDITOR
-[CustomEditor(typeof(RadixSortSample))]
-public class RadixSortSampleEditor : Editor
+[CustomEditor(typeof(SortSample))]
+public class SortSampleEditor : Editor
 {
     public override void OnInspectorGUI()
     {
@@ -142,8 +134,8 @@ public class RadixSortSampleEditor : Editor
         GUILayout.Space(5f);
         if (GUILayout.Button("Check Success"))
         {
-            var radixSortSample = target as RadixSortSample;
-            radixSortSample.CheckSuccess();
+            var sortSample = target as SortSample;
+            sortSample.CheckSuccess();
         }
     }
 }

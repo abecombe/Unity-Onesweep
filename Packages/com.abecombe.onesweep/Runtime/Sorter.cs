@@ -40,7 +40,7 @@ namespace Onesweep
     /// https://github.com/b0nes164/GPUSorting
     /// Licensed under the MIT License
     /// </summary>
-    public class RadixSort : IDisposable
+    public class Sorter : IDisposable
     {
         #region Constants
         private const int MaxDispatchSize = 65535;
@@ -112,7 +112,7 @@ namespace Onesweep
         public bool Inited { get; private set; } = false;
 
         /// <summary>
-        /// Initializes RadixSort.
+        /// Initializes Sorter.
         /// </summary>
         /// <param name="onesweepComputeConfig">
         /// Compute shader configuration for Onesweep.
