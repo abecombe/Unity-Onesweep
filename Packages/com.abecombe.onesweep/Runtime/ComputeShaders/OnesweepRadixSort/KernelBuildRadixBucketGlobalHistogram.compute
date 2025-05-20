@@ -9,8 +9,8 @@
 #pragma multi_compile SORTING_ORDER_ASCENDING SORTING_ORDER_DESCENDING
 #pragma multi_compile USE_DIRECT_DISPATCH USE_INDIRECT_DISPATCH
 
-#include "Radix.hlsl"
-#include "DispatchUtils.hlsl"
+#include "../RadixCommon/Radix.hlsl"
+#include "../RadixCommon/DispatchUtils.hlsl"
 
 #define ITEMS_PER_THREAD (64u)
 

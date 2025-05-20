@@ -1,5 +1,5 @@
-﻿#ifndef CS_ONE_SWEEP_COMMON_WAVE_HLSL
-#define CS_ONE_SWEEP_COMMON_WAVE_HLSL
+﻿#ifndef CS_COMMON_WAVE_HLSL
+#define CS_COMMON_WAVE_HLSL
 
 //#pragma use_dxc
 //#pragma require wavebasic
@@ -30,4 +30,4 @@
 
 #define WAVE_SIZE_MASK (WAVE_SIZE - 1u)
 
-#endif /* CS_ONE_SWEEP_COMMON_WAVE_HLSL */
+#endif /* CS_COMMON_WAVE_HLSL */

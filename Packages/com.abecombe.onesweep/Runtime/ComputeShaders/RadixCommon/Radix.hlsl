@@ -1,5 +1,5 @@
-﻿#ifndef CS_ONE_SWEEP_RADIX_SORT_RADIX_HLSL
-#define CS_ONE_SWEEP_RADIX_SORT_RADIX_HLSL
+﻿#ifndef CS_RADIX_COMMON_RADIX_HLSL
+#define CS_RADIX_COMMON_RADIX_HLSL
 
 //#pragma multi_compile KEY_TYPE_UINT KEY_TYPE_INT KEY_TYPE_FLOAT
 //#pragma multi_compile SORTING_ORDER_ASCENDING SORTING_ORDER_DESCENDING
@@ -79,4 +79,4 @@ inline uint get_radix_digit(in uint sorting_key, in uint radix_shift)
     return (sorting_key >> radix_shift) & RADIX_BASE_MASK;
 }
 
-#endif /* CS_ONE_SWEEP_RADIX_SORT_RADIX_HLSL */
+#endif /* CS_RADIX_COMMON_RADIX_HLSL */

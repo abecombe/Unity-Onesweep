@@ -13,10 +13,10 @@
 #pragma multi_compile SORTING_ORDER_ASCENDING SORTING_ORDER_DESCENDING
 #pragma multi_compile USE_DIRECT_DISPATCH USE_INDIRECT_DISPATCH
 
-#include "Radix.hlsl"
+#include "../RadixCommon/Radix.hlsl"
 #include "PartitionDescriptor.hlsl"
-#include "../OnesweepCommon/Wave.hlsl"
-#include "DispatchUtils.hlsl"
+#include "../Common/Wave.hlsl"
+#include "../RadixCommon/DispatchUtils.hlsl"
 
 #define THREADS_PER_GROUP (RADIX_BASE)
 
