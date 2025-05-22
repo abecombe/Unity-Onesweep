@@ -1,0 +1,67 @@
+﻿// This file includes code adapted from GPUSorting by Thomas Smith
+// https://github.com/b0nes164/GPUSorting
+// Licensed under the MIT License
+// Modified by abecombe, 2025
+
+#pragma kernel SortTraditional
+
+#pragma use_dxc
+#pragma require wavebasic
+#pragma require waveballot
+#pragma multi_compile WAVE_SIZE_32 WAVE_SIZE_64
+#pragma multi_compile KEY_TYPE_UINT KEY_TYPE_INT KEY_TYPE_FLOAT
+#pragma multi_compile SORTING_ORDER_ASCENDING SORTING_ORDER_DESCENDING
+#pragma multi_compile USE_DIRECT_DISPATCH USE_INDIRECT_DISPATCH
+
+#include "../RadixCommon/RadixMain.hlsl"
+
+StructuredBuffer<uint> scan_bucket_count_buffer;
+
+inline void LoadScannedBucketCount(uint bucket_id, uint partition_index, uint group_count)
+{
+    // subtract the first index of bucket_id in the group
+    // to make it easier to calculate the final destination of individual data
+    group_shared[bucket_id] = scan_bucket_count_buffer[bucket_id * group_count + partition_index] - group_shared[bucket_id];
+}
+
+/**
+ * \brief Performs a traditional radix sort pass for 8 bits of the key.
+ *
+ * \note Dispatch group size: ceil(sort_item_count / ITEMS_PER_GROUP)
+ *
+ * This kernel performs one pass of a traditional radix sort (processing 8 bits of the key),
+ * using histogram bins computed per group. It assumes that an exclusive prefix scan
+ * of the histogram has already been computed by a separate kernel.
+ */
+[numthreads(THREADS_PER_GROUP, 1, 1)]
+void SortTraditional(uint partition_index : SV_GroupID, uint group_thread_id : SV_GroupThreadID)
+{
+#if defined(USE_INDIRECT_DISPATCH)
+    uint sort_count;
+    uint group_count;
+    get_sort_count_group_count(sort_count, group_count);
+#endif
+
+    const ItemsArray keys = LoadKeys(group_thread_id, partition_index, sort_count, group_count);
+    ItemsArray16bit offsets = ComputeWaveLevelLocalOffsets(group_thread_id, keys);
+    GroupMemoryBarrierWithGroupSync();
+
+    const uint bucket_total_count_in_group = ExclusiveScanBucketCountsInGroup(group_thread_id);
+    GroupMemoryBarrierWithGroupSync();
+
+    ScanBucketTotalCountExclusiveToSharedMemory(group_thread_id, bucket_total_count_in_group);
+    GroupMemoryBarrierWithGroupSync();
+    UpdateLocalOffsetsFromWaveToGroupLevel(group_thread_id, keys, offsets);
+    GroupMemoryBarrierWithGroupSync();
+
+    SortKeysInGroup(offsets, keys);
+
+    LoadScannedBucketCount(group_thread_id, partition_index, group_count);
+    GroupMemoryBarrierWithGroupSync();
+
+    const ItemsArray out_buffer_indices = StoreKeys(group_thread_id, partition_index, sort_count, group_count);
+    GroupMemoryBarrierWithGroupSync();
+    WriteSortedIndicesToSharedMemory(group_thread_id, partition_index, sort_count, group_count, offsets);
+    GroupMemoryBarrierWithGroupSync();
+    StoreIndices(group_thread_id, partition_index, sort_count, group_count, out_buffer_indices);
+}
