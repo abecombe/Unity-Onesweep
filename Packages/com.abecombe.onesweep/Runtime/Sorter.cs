@@ -62,6 +62,28 @@ namespace Onesweep
             (sortCount + SortKernelItemsPerThread * SortKernelThreadsPerGroup - 1) / (SortKernelItemsPerThread * SortKernelThreadsPerGroup);
         #endregion
 
+        #region Shader Property IDs
+        private static readonly int WaveSizeBufferID = Shader.PropertyToID("wave_size_buffer");
+        private static readonly int SortCountID = Shader.PropertyToID("sort_count");
+        private static readonly int GroupID = Shader.PropertyToID("group_count");
+        private static readonly int BucketCountBufferID = Shader.PropertyToID("bucket_count_buffer");
+        private static readonly int PartitionIndexBufferID = Shader.PropertyToID("partition_index_buffer");
+        private static readonly int PartitionDescriptorBufferID = Shader.PropertyToID("partition_descriptor_buffer");
+        private static readonly int KeyInBufferID = Shader.PropertyToID("key_in_buffer");
+        private static readonly int CurrentPassRadixShiftID = Shader.PropertyToID("current_pass_radix_shift");
+        private static readonly int KeyOutBufferID = Shader.PropertyToID("key_out_buffer");
+        private static readonly int IndexInBufferID = Shader.PropertyToID("index_in_buffer");
+        private static readonly int IndexOutBufferID = Shader.PropertyToID("index_out_buffer");
+        private static readonly int BuildKernelItemsPerGroupID = Shader.PropertyToID("build_kernel_items_per_group");
+        private static readonly int SortKernelItemsPerGroupID = Shader.PropertyToID("sort_kernel_items_per_group");
+        private static readonly int MaxSortCountID = Shader.PropertyToID("max_sort_count");
+        private static readonly int SortCountBufferID = Shader.PropertyToID("sort_count_buffer");
+        private static readonly int SortCountBufferOffsetID = Shader.PropertyToID("sort_count_buffer_offset");
+        private static readonly int BuildKernelDispatchArgsBufferID = Shader.PropertyToID("build_kernel_dispatch_args_buffer");
+        private static readonly int SortKernelDispatchArgsBufferID = Shader.PropertyToID("sort_kernel_dispatch_args_buffer");
+        private static readonly int SortCountGroupCountBufferID = Shader.PropertyToID("sort_count_group_count_buffer");
+        #endregion
+
         #region Private Fields
         private ComputeShader _precomputeCs;
         private ComputeShader _initCs;
@@ -100,16 +122,18 @@ namespace Onesweep
         // buffer to store the dispatch args for the sort kernel
         // size: 3
         private GraphicsBuffer _sortKernelDispatchArgsBuffer;
+        #endregion
+
+        #region Public Properties
+        public bool Inited { get; private set; } = false;
 
         public KeyType KeyType { get; private set; }
         public SortingOrder SortingOrder { get; private set; }
         public DispatchMode DispatchMode { get; private set; }
         public WaveSize WaveSize { get; private set; }
         public int MaxSortCount { get; private set; }
-        #endregion
 
-        #region Public Properties
-        public bool Inited { get; private set; } = false;
+        public static WaveSize StoredWaveSize { get; private set; } = WaveSize.Unknown; // for storing the wave size of the device
 
         /// <summary>
         /// Initializes Sorter.
@@ -144,12 +168,23 @@ namespace Onesweep
             KeyType = keyType;
             SortingOrder = sortingOrder;
             DispatchMode = dispatchMode;
-            WaveSize = waveSize;
-            if (WaveSize == WaveSize.Unknown)
+
+            if (StoredWaveSize != WaveSize.Unknown && waveSize != WaveSize.Unknown && StoredWaveSize != waveSize)
+                throw new ArgumentException($"This device wave size is {StoredWaveSize}.");
+            if (waveSize != WaveSize.Unknown)
             {
-                WaveSize = GetWaveSize(onesweepComputeConfig, out var waveSizeUInt);
-                if (WaveSize == WaveSize.Unknown)
+                WaveSize = waveSize;
+            }
+            else if (StoredWaveSize != WaveSize.Unknown)
+            {
+                WaveSize = StoredWaveSize;
+            }
+            else
+            {
+                StoredWaveSize = GetWaveSize(onesweepComputeConfig, out var waveSizeUInt);
+                if (StoredWaveSize == WaveSize.Unknown)
                     throw new ArgumentException($"This device wave size is {waveSizeUInt}. Wave size must be 32 or 64.");
+                WaveSize = StoredWaveSize;
             }
 
             MaxSortCount = Mathf.Max(maxSortCount, 1);
@@ -285,7 +320,7 @@ namespace Onesweep
             var waveSizeCs = onesweepComputeConfig.WaveSizeCs;
             var waveSizeKernel = waveSizeCs.FindKernel("GetWaveSize");
             var waveSizeBuffer = new GraphicsBuffer(GraphicsBuffer.Target.Structured, 1, sizeof(uint));
-            waveSizeCs.SetBuffer(waveSizeKernel, "wave_size_buffer", waveSizeBuffer);
+            waveSizeCs.SetBuffer(waveSizeKernel, WaveSizeBufferID, waveSizeBuffer);
             waveSizeCs.Dispatch(waveSizeKernel, 1, 1, 1);
             uint[] waveSizeData = new uint[1];
             waveSizeBuffer.GetData(waveSizeData);
@@ -334,37 +369,37 @@ namespace Onesweep
 
             foreach (var cs in _computeShaders)
             {
-                cs.SetInt("sort_count", sortCount);
+                cs.SetInt(SortCountID, sortCount);
                 int groupCount = SortKernelDispatchGroupSize(sortCount);
-                cs.SetInt("group_count", groupCount);
+                cs.SetInt(GroupID, groupCount);
             }
 
             // init buffers
-            _initCs.SetBuffer(_initKernel, "bucket_count_buffer", _bucketCountBuffer);
-            _initCs.SetBuffer(_initKernel, "partition_index_buffer", _partitionIndexBuffer);
-            _initCs.SetBuffer(_initKernel, "partition_descriptor_buffer", _partitionDescriptorBuffer);
+            _initCs.SetBuffer(_initKernel, BucketCountBufferID, _bucketCountBuffer);
+            _initCs.SetBuffer(_initKernel, PartitionIndexBufferID, _partitionIndexBuffer);
+            _initCs.SetBuffer(_initKernel, PartitionDescriptorBufferID, _partitionDescriptorBuffer);
             _initCs.Dispatch(_initKernel, InitKernelDispatchGroupSize, 1, 1);
 
             // build radix bucket global histogram
-            _buildCs.SetBuffer(_buildKernel, "bucket_count_buffer", _bucketCountBuffer);
-            _buildCs.SetBuffer(_buildKernel, "key_in_buffer", keyBuffer);
+            _buildCs.SetBuffer(_buildKernel, BucketCountBufferID, _bucketCountBuffer);
+            _buildCs.SetBuffer(_buildKernel, KeyInBufferID, keyBuffer);
             _buildCs.Dispatch(_buildKernel, BuildKernelDispatchGroupSize(sortCount), 1, 1);
 
             // scan radix bucket global histogram
-            _scanCs.SetBuffer(_scanKernel, "bucket_count_buffer", _bucketCountBuffer);
-            _scanCs.SetBuffer(_scanKernel, "partition_descriptor_buffer", _partitionDescriptorBuffer);
+            _scanCs.SetBuffer(_scanKernel, BucketCountBufferID, _bucketCountBuffer);
+            _scanCs.SetBuffer(_scanKernel, PartitionDescriptorBufferID, _partitionDescriptorBuffer);
             _scanCs.Dispatch(_scanKernel, ScanKernelDispatchGroupSize, 1, 1);
 
             // sort onesweep
-            _sortCs.SetBuffer(_sortKernel, "partition_index_buffer", _partitionIndexBuffer);
-            _sortCs.SetBuffer(_sortKernel, "partition_descriptor_buffer", _partitionDescriptorBuffer);
+            _sortCs.SetBuffer(_sortKernel, PartitionIndexBufferID, _partitionIndexBuffer);
+            _sortCs.SetBuffer(_sortKernel, PartitionDescriptorBufferID, _partitionDescriptorBuffer);
             for (int i = 0; i < RadixStepCount; i++)
             {
-                _sortCs.SetInt("current_pass_radix_shift", i << 3);
-                _sortCs.SetBuffer(_sortKernel, "key_in_buffer", i % 2 == 0 ? keyBuffer : _tempKeyBuffer);
-                _sortCs.SetBuffer(_sortKernel, "key_out_buffer", i % 2 == 0 ? _tempKeyBuffer : keyBuffer);
-                _sortCs.SetBuffer(_sortKernel, "index_in_buffer", i % 2 == 0 ? indexBuffer : _tempIndexBuffer);
-                _sortCs.SetBuffer(_sortKernel, "index_out_buffer", i % 2 == 0 ? _tempIndexBuffer : indexBuffer);
+                _sortCs.SetInt(CurrentPassRadixShiftID, i << 3);
+                _sortCs.SetBuffer(_sortKernel, KeyInBufferID, i % 2 == 0 ? keyBuffer : _tempKeyBuffer);
+                _sortCs.SetBuffer(_sortKernel, KeyOutBufferID, i % 2 == 0 ? _tempKeyBuffer : keyBuffer);
+                _sortCs.SetBuffer(_sortKernel, IndexInBufferID, i % 2 == 0 ? indexBuffer : _tempIndexBuffer);
+                _sortCs.SetBuffer(_sortKernel, IndexOutBufferID, i % 2 == 0 ? _tempIndexBuffer : indexBuffer);
                 _sortCs.Dispatch(_sortKernel, SortKernelDispatchGroupSize(sortCount), 1, 1);
             }
         }
@@ -406,37 +441,37 @@ namespace Onesweep
 
             foreach (var cs in _computeShaders)
             {
-                cmd.SetComputeIntParam(cs, "sort_count", sortCount);
+                cmd.SetComputeIntParam(cs, SortCountID, sortCount);
                 int groupCount = SortKernelDispatchGroupSize(sortCount);
-                cmd.SetComputeIntParam(cs, "group_count", groupCount);
+                cmd.SetComputeIntParam(cs, GroupID, groupCount);
             }
 
             // init buffers
-            cmd.SetComputeBufferParam(_initCs, _initKernel, "bucket_count_buffer", _bucketCountBuffer);
-            cmd.SetComputeBufferParam(_initCs, _initKernel, "partition_index_buffer", _partitionIndexBuffer);
-            cmd.SetComputeBufferParam(_initCs, _initKernel, "partition_descriptor_buffer", _partitionDescriptorBuffer);
+            cmd.SetComputeBufferParam(_initCs, _initKernel, BucketCountBufferID, _bucketCountBuffer);
+            cmd.SetComputeBufferParam(_initCs, _initKernel, PartitionIndexBufferID, _partitionIndexBuffer);
+            cmd.SetComputeBufferParam(_initCs, _initKernel, PartitionDescriptorBufferID, _partitionDescriptorBuffer);
             cmd.DispatchCompute(_initCs, _initKernel, InitKernelDispatchGroupSize, 1, 1);
 
             // build radix bucket global histogram
-            cmd.SetComputeBufferParam(_buildCs, _buildKernel, "bucket_count_buffer", _bucketCountBuffer);
-            cmd.SetComputeBufferParam(_buildCs, _buildKernel, "key_in_buffer", keyBuffer);
+            cmd.SetComputeBufferParam(_buildCs, _buildKernel, BucketCountBufferID, _bucketCountBuffer);
+            cmd.SetComputeBufferParam(_buildCs, _buildKernel, KeyInBufferID, keyBuffer);
             cmd.DispatchCompute(_buildCs, _buildKernel, BuildKernelDispatchGroupSize(sortCount), 1, 1);
 
             // scan radix bucket global histogram
-            cmd.SetComputeBufferParam(_scanCs, _scanKernel, "bucket_count_buffer", _bucketCountBuffer);
-            cmd.SetComputeBufferParam(_scanCs, _scanKernel, "partition_descriptor_buffer", _partitionDescriptorBuffer);
+            cmd.SetComputeBufferParam(_scanCs, _scanKernel, BucketCountBufferID, _bucketCountBuffer);
+            cmd.SetComputeBufferParam(_scanCs, _scanKernel, PartitionDescriptorBufferID, _partitionDescriptorBuffer);
             cmd.DispatchCompute(_scanCs, _scanKernel, ScanKernelDispatchGroupSize, 1, 1);
 
             // sort onesweep
-            cmd.SetComputeBufferParam(_sortCs, _sortKernel, "partition_index_buffer", _partitionIndexBuffer);
-            cmd.SetComputeBufferParam(_sortCs, _sortKernel, "partition_descriptor_buffer", _partitionDescriptorBuffer);
+            cmd.SetComputeBufferParam(_sortCs, _sortKernel, PartitionIndexBufferID, _partitionIndexBuffer);
+            cmd.SetComputeBufferParam(_sortCs, _sortKernel, PartitionDescriptorBufferID, _partitionDescriptorBuffer);
             for (int i = 0; i < RadixStepCount; i++)
             {
-                cmd.SetComputeIntParam(_sortCs, "current_pass_radix_shift", i << 3);
-                cmd.SetComputeBufferParam(_sortCs, _sortKernel, "key_in_buffer", i % 2 == 0 ? keyBuffer : _tempKeyBuffer);
-                cmd.SetComputeBufferParam(_sortCs, _sortKernel, "key_out_buffer", i % 2 == 0 ? _tempKeyBuffer : keyBuffer);
-                cmd.SetComputeBufferParam(_sortCs, _sortKernel, "index_in_buffer", i % 2 == 0 ? indexBuffer : _tempIndexBuffer);
-                cmd.SetComputeBufferParam(_sortCs, _sortKernel, "index_out_buffer", i % 2 == 0 ? _tempIndexBuffer : indexBuffer);
+                cmd.SetComputeIntParam(_sortCs, CurrentPassRadixShiftID, i << 3);
+                cmd.SetComputeBufferParam(_sortCs, _sortKernel, KeyInBufferID, i % 2 == 0 ? keyBuffer : _tempKeyBuffer);
+                cmd.SetComputeBufferParam(_sortCs, _sortKernel, KeyOutBufferID, i % 2 == 0 ? _tempKeyBuffer : keyBuffer);
+                cmd.SetComputeBufferParam(_sortCs, _sortKernel, IndexInBufferID, i % 2 == 0 ? indexBuffer : _tempIndexBuffer);
+                cmd.SetComputeBufferParam(_sortCs, _sortKernel, IndexOutBufferID, i % 2 == 0 ? _tempIndexBuffer : indexBuffer);
                 cmd.DispatchCompute(_sortCs, _sortKernel, SortKernelDispatchGroupSize(sortCount), 1, 1);
             }
         }
@@ -474,49 +509,49 @@ namespace Onesweep
                 throw new ArgumentException("The stride of sortCountBuffer must be 4 bytes.");
 
             // precompute for indirect dispatch
-            _precomputeCs.SetInt("build_kernel_items_per_group", BuildKernelItemsPerThread * BuildKernelThreadsPerGroup);
-            _precomputeCs.SetInt("sort_kernel_items_per_group", SortKernelItemsPerThread * SortKernelThreadsPerGroup);
-            _precomputeCs.SetInt("max_sort_count", Mathf.Min(MaxSortCount, Mathf.Min(keyBuffer.count, indexBuffer.count)));
-            _precomputeCs.SetBuffer(_precomputeKernel, "sort_count_buffer", sortCountBuffer);
-            _precomputeCs.SetInt("sort_count_buffer_offset", sortCountBufferOffset);
-            _precomputeCs.SetBuffer(_precomputeKernel, "build_kernel_dispatch_args_buffer", _buildKernelDispatchArgsBuffer);
-            _precomputeCs.SetBuffer(_precomputeKernel, "sort_kernel_dispatch_args_buffer", _sortKernelDispatchArgsBuffer);
-            _precomputeCs.SetBuffer(_precomputeKernel, "sort_count_group_count_buffer", _sortCountGroupCountBuffer);
+            _precomputeCs.SetInt(BuildKernelItemsPerGroupID, BuildKernelItemsPerThread * BuildKernelThreadsPerGroup);
+            _precomputeCs.SetInt(SortKernelItemsPerGroupID, SortKernelItemsPerThread * SortKernelThreadsPerGroup);
+            _precomputeCs.SetInt(MaxSortCountID, Mathf.Min(MaxSortCount, Mathf.Min(keyBuffer.count, indexBuffer.count)));
+            _precomputeCs.SetBuffer(_precomputeKernel, SortCountBufferID, sortCountBuffer);
+            _precomputeCs.SetInt(SortCountBufferOffsetID, sortCountBufferOffset);
+            _precomputeCs.SetBuffer(_precomputeKernel, BuildKernelDispatchArgsBufferID, _buildKernelDispatchArgsBuffer);
+            _precomputeCs.SetBuffer(_precomputeKernel, SortKernelDispatchArgsBufferID, _sortKernelDispatchArgsBuffer);
+            _precomputeCs.SetBuffer(_precomputeKernel, SortCountGroupCountBufferID, _sortCountGroupCountBuffer);
             _precomputeCs.Dispatch(_precomputeKernel, PrecomputeKernelDispatchGroupSize, 1, 1);
 
             for (int i = 0; i < _computeShaders.Length; i++)
             {
                 var cs = _computeShaders[i];
                 var kernel = _kernels[i];
-                cs.SetBuffer(kernel, "sort_count_group_count_buffer", _sortCountGroupCountBuffer);
+                cs.SetBuffer(kernel, SortCountGroupCountBufferID, _sortCountGroupCountBuffer);
             }
 
             // init buffers
-            _initCs.SetBuffer(_initKernel, "bucket_count_buffer", _bucketCountBuffer);
-            _initCs.SetBuffer(_initKernel, "partition_index_buffer", _partitionIndexBuffer);
-            _initCs.SetBuffer(_initKernel, "partition_descriptor_buffer", _partitionDescriptorBuffer);
+            _initCs.SetBuffer(_initKernel, BucketCountBufferID, _bucketCountBuffer);
+            _initCs.SetBuffer(_initKernel, PartitionIndexBufferID, _partitionIndexBuffer);
+            _initCs.SetBuffer(_initKernel, PartitionDescriptorBufferID, _partitionDescriptorBuffer);
             _initCs.Dispatch(_initKernel, InitKernelDispatchGroupSize, 1, 1);
 
             // build radix bucket global histogram
-            _buildCs.SetBuffer(_buildKernel, "bucket_count_buffer", _bucketCountBuffer);
-            _buildCs.SetBuffer(_buildKernel, "key_in_buffer", keyBuffer);
+            _buildCs.SetBuffer(_buildKernel, BucketCountBufferID, _bucketCountBuffer);
+            _buildCs.SetBuffer(_buildKernel, KeyInBufferID, keyBuffer);
             _buildCs.DispatchIndirect(_buildKernel, _buildKernelDispatchArgsBuffer);
 
             // scan radix bucket global histogram
-            _scanCs.SetBuffer(_scanKernel, "bucket_count_buffer", _bucketCountBuffer);
-            _scanCs.SetBuffer(_scanKernel, "partition_descriptor_buffer", _partitionDescriptorBuffer);
+            _scanCs.SetBuffer(_scanKernel, BucketCountBufferID, _bucketCountBuffer);
+            _scanCs.SetBuffer(_scanKernel, PartitionDescriptorBufferID, _partitionDescriptorBuffer);
             _scanCs.Dispatch(_scanKernel, ScanKernelDispatchGroupSize, 1, 1);
 
             // sort onesweep
-            _sortCs.SetBuffer(_sortKernel, "partition_index_buffer", _partitionIndexBuffer);
-            _sortCs.SetBuffer(_sortKernel, "partition_descriptor_buffer", _partitionDescriptorBuffer);
+            _sortCs.SetBuffer(_sortKernel, PartitionIndexBufferID, _partitionIndexBuffer);
+            _sortCs.SetBuffer(_sortKernel, PartitionDescriptorBufferID, _partitionDescriptorBuffer);
             for (int i = 0; i < RadixStepCount; i++)
             {
-                _sortCs.SetInt("current_pass_radix_shift", i << 3);
-                _sortCs.SetBuffer(_sortKernel, "key_in_buffer", i % 2 == 0 ? keyBuffer : _tempKeyBuffer);
-                _sortCs.SetBuffer(_sortKernel, "key_out_buffer", i % 2 == 0 ? _tempKeyBuffer : keyBuffer);
-                _sortCs.SetBuffer(_sortKernel, "index_in_buffer", i % 2 == 0 ? indexBuffer : _tempIndexBuffer);
-                _sortCs.SetBuffer(_sortKernel, "index_out_buffer", i % 2 == 0 ? _tempIndexBuffer : indexBuffer);
+                _sortCs.SetInt(CurrentPassRadixShiftID, i << 3);
+                _sortCs.SetBuffer(_sortKernel, KeyInBufferID, i % 2 == 0 ? keyBuffer : _tempKeyBuffer);
+                _sortCs.SetBuffer(_sortKernel, KeyOutBufferID, i % 2 == 0 ? _tempKeyBuffer : keyBuffer);
+                _sortCs.SetBuffer(_sortKernel, IndexInBufferID, i % 2 == 0 ? indexBuffer : _tempIndexBuffer);
+                _sortCs.SetBuffer(_sortKernel, IndexOutBufferID, i % 2 == 0 ? _tempIndexBuffer : indexBuffer);
                 _sortCs.DispatchIndirect(_sortKernel, _sortKernelDispatchArgsBuffer);
             }
         }
@@ -556,49 +591,49 @@ namespace Onesweep
                 throw new ArgumentException("The stride of sortCountBuffer must be 4 bytes.");
 
             // precompute for indirect dispatch
-            cmd.SetComputeIntParam(_precomputeCs, "build_kernel_items_per_group", BuildKernelItemsPerThread * BuildKernelThreadsPerGroup);
-            cmd.SetComputeIntParam(_precomputeCs, "sort_kernel_items_per_group", SortKernelItemsPerThread * SortKernelThreadsPerGroup);
-            cmd.SetComputeIntParam(_precomputeCs, "max_sort_count", Mathf.Min(MaxSortCount, Mathf.Min(keyBuffer.count, indexBuffer.count)));
-            cmd.SetComputeBufferParam(_precomputeCs, _precomputeKernel, "sort_count_buffer", sortCountBuffer);
-            cmd.SetComputeIntParam(_precomputeCs, "sort_count_buffer_offset", sortCountBufferOffset);
-            cmd.SetComputeBufferParam(_precomputeCs, _precomputeKernel, "build_kernel_dispatch_args_buffer", _buildKernelDispatchArgsBuffer);
-            cmd.SetComputeBufferParam(_precomputeCs, _precomputeKernel, "sort_kernel_dispatch_args_buffer", _sortKernelDispatchArgsBuffer);
-            cmd.SetComputeBufferParam(_precomputeCs, _precomputeKernel, "sort_count_group_count_buffer", _sortCountGroupCountBuffer);
+            cmd.SetComputeIntParam(_precomputeCs, BuildKernelItemsPerGroupID, BuildKernelItemsPerThread * BuildKernelThreadsPerGroup);
+            cmd.SetComputeIntParam(_precomputeCs, SortKernelItemsPerGroupID, SortKernelItemsPerThread * SortKernelThreadsPerGroup);
+            cmd.SetComputeIntParam(_precomputeCs, MaxSortCountID, Mathf.Min(MaxSortCount, Mathf.Min(keyBuffer.count, indexBuffer.count)));
+            cmd.SetComputeBufferParam(_precomputeCs, _precomputeKernel, SortCountBufferID, sortCountBuffer);
+            cmd.SetComputeIntParam(_precomputeCs, SortCountBufferOffsetID, sortCountBufferOffset);
+            cmd.SetComputeBufferParam(_precomputeCs, _precomputeKernel, BuildKernelDispatchArgsBufferID, _buildKernelDispatchArgsBuffer);
+            cmd.SetComputeBufferParam(_precomputeCs, _precomputeKernel, SortKernelDispatchArgsBufferID, _sortKernelDispatchArgsBuffer);
+            cmd.SetComputeBufferParam(_precomputeCs, _precomputeKernel, SortCountGroupCountBufferID, _sortCountGroupCountBuffer);
             cmd.DispatchCompute(_precomputeCs, _precomputeKernel, PrecomputeKernelDispatchGroupSize, 1, 1);
 
             for (int i = 0; i < _computeShaders.Length; i++)
             {
                 var cs = _computeShaders[i];
                 var kernel = _kernels[i];
-                cmd.SetComputeBufferParam(cs, kernel, "sort_count_group_count_buffer", _sortCountGroupCountBuffer);
+                cmd.SetComputeBufferParam(cs, kernel, SortCountGroupCountBufferID, _sortCountGroupCountBuffer);
             }
 
             // init buffers
-            cmd.SetComputeBufferParam(_initCs, _initKernel, "bucket_count_buffer", _bucketCountBuffer);
-            cmd.SetComputeBufferParam(_initCs, _initKernel, "partition_index_buffer", _partitionIndexBuffer);
-            cmd.SetComputeBufferParam(_initCs, _initKernel, "partition_descriptor_buffer", _partitionDescriptorBuffer);
+            cmd.SetComputeBufferParam(_initCs, _initKernel, BucketCountBufferID, _bucketCountBuffer);
+            cmd.SetComputeBufferParam(_initCs, _initKernel, PartitionIndexBufferID, _partitionIndexBuffer);
+            cmd.SetComputeBufferParam(_initCs, _initKernel, PartitionDescriptorBufferID, _partitionDescriptorBuffer);
             cmd.DispatchCompute(_initCs, _initKernel, InitKernelDispatchGroupSize, 1, 1);
 
             // build radix bucket global histogram
-            cmd.SetComputeBufferParam(_buildCs, _buildKernel, "bucket_count_buffer", _bucketCountBuffer);
-            cmd.SetComputeBufferParam(_buildCs, _buildKernel, "key_in_buffer", keyBuffer);
+            cmd.SetComputeBufferParam(_buildCs, _buildKernel, BucketCountBufferID, _bucketCountBuffer);
+            cmd.SetComputeBufferParam(_buildCs, _buildKernel, KeyInBufferID, keyBuffer);
             cmd.DispatchCompute(_buildCs, _buildKernel, _buildKernelDispatchArgsBuffer, 0);
 
             // scan radix bucket global histogram
-            cmd.SetComputeBufferParam(_scanCs, _scanKernel, "bucket_count_buffer", _bucketCountBuffer);
-            cmd.SetComputeBufferParam(_scanCs, _scanKernel, "partition_descriptor_buffer", _partitionDescriptorBuffer);
+            cmd.SetComputeBufferParam(_scanCs, _scanKernel, BucketCountBufferID, _bucketCountBuffer);
+            cmd.SetComputeBufferParam(_scanCs, _scanKernel, PartitionDescriptorBufferID, _partitionDescriptorBuffer);
             cmd.DispatchCompute(_scanCs, _scanKernel, ScanKernelDispatchGroupSize, 1, 1);
 
             // sort onesweep
-            cmd.SetComputeBufferParam(_sortCs, _sortKernel, "partition_index_buffer", _partitionIndexBuffer);
-            cmd.SetComputeBufferParam(_sortCs, _sortKernel, "partition_descriptor_buffer", _partitionDescriptorBuffer);
+            cmd.SetComputeBufferParam(_sortCs, _sortKernel, PartitionIndexBufferID, _partitionIndexBuffer);
+            cmd.SetComputeBufferParam(_sortCs, _sortKernel, PartitionDescriptorBufferID, _partitionDescriptorBuffer);
             for (int i = 0; i < RadixStepCount; i++)
             {
-                cmd.SetComputeIntParam(_sortCs, "current_pass_radix_shift", i << 3);
-                cmd.SetComputeBufferParam(_sortCs, _sortKernel, "key_in_buffer", i % 2 == 0 ? keyBuffer : _tempKeyBuffer);
-                cmd.SetComputeBufferParam(_sortCs, _sortKernel, "key_out_buffer", i % 2 == 0 ? _tempKeyBuffer : keyBuffer);
-                cmd.SetComputeBufferParam(_sortCs, _sortKernel, "index_in_buffer", i % 2 == 0 ? indexBuffer : _tempIndexBuffer);
-                cmd.SetComputeBufferParam(_sortCs, _sortKernel, "index_out_buffer", i % 2 == 0 ? _tempIndexBuffer : indexBuffer);
+                cmd.SetComputeIntParam(_sortCs, CurrentPassRadixShiftID, i << 3);
+                cmd.SetComputeBufferParam(_sortCs, _sortKernel, KeyInBufferID, i % 2 == 0 ? keyBuffer : _tempKeyBuffer);
+                cmd.SetComputeBufferParam(_sortCs, _sortKernel, KeyOutBufferID, i % 2 == 0 ? _tempKeyBuffer : keyBuffer);
+                cmd.SetComputeBufferParam(_sortCs, _sortKernel, IndexInBufferID, i % 2 == 0 ? indexBuffer : _tempIndexBuffer);
+                cmd.SetComputeBufferParam(_sortCs, _sortKernel, IndexOutBufferID, i % 2 == 0 ? _tempIndexBuffer : indexBuffer);
                 cmd.DispatchCompute(_sortCs, _sortKernel, _sortKernelDispatchArgsBuffer, 0);
             }
         }

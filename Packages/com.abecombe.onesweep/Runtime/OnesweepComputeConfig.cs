@@ -6,7 +6,7 @@ namespace Onesweep
     /// Configuration for Onesweep compute shaders.
     /// </summary>
     /// <remarks>
-    /// This class holds references to the compute shaders used in the Onesweep algorithm.
+    /// This class holds references to the compute shaders used in the Onesweep Package.
     /// </remarks>
     [CreateAssetMenu(fileName = "OnesweepComputeConfig", menuName = "Onesweep/ComputeConfig")]
     public class OnesweepComputeConfig : ScriptableObject
