@@ -11,11 +11,15 @@ namespace Onesweep
     [CreateAssetMenu(fileName = "OnesweepComputeConfig", menuName = "Onesweep/ComputeConfig")]
     public class OnesweepComputeConfig : ScriptableObject
     {
+        [Header("Onesweep RadixSort Compute Shaders")]
         public ComputeShader WaveSizeCs;
         public ComputeShader PrecomputeCs;
         public ComputeShader InitCs;
         public ComputeShader BuildCs;
         public ComputeShader ScanCs;
         public ComputeShader SortCs;
+
+        [Header("Traditional Radix Sort Compute Shaders")]
+        public ComputeShader TraditionalSortCs;
     }
 }

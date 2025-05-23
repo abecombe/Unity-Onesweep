@@ -18,7 +18,7 @@ public class SortSample : MonoBehaviour
     [SerializeField] private int _randomSeed = 0;
     [SerializeField] private OnesweepComputeConfig _config;
 
-    private Sorter _sorter = new();
+    private OnesweepSorter _sorter = new();
 
     private GraphicsBuffer _keyBuffer;
     private GraphicsBuffer _indexBuffer;

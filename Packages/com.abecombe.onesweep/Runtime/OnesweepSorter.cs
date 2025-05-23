@@ -4,33 +4,6 @@ using UnityEngine.Rendering;
 
 namespace Onesweep
 {
-    public enum KeyType
-    {
-        UInt = 0,
-        Int,
-        Float
-    }
-    public enum SortingOrder
-    {
-        Ascending = 0,
-        Descending
-    }
-    /// <remarks>
-    /// Direct dispatch mode: the sort count is passed as an argument
-    /// Indirect dispatch mode: the sort count is passed via a GraphicsBuffer
-    /// </remarks>
-    public enum DispatchMode
-    {
-        Direct = 0,
-        Indirect
-    }
-    public enum WaveSize
-    {
-        WaveSize32 = 32,
-        WaveSize64 = 64,
-        Unknown = 0
-    }
-
     /// /// <summary>
     /// GPU One Sweep Radix Sort
     /// Implementation of Paper "Onesweep: A Faster Least Significant Digit Radix Sort for GPUs"
@@ -40,7 +13,7 @@ namespace Onesweep
     /// https://github.com/b0nes164/GPUSorting
     /// Licensed under the MIT License
     /// </summary>
-    public class Sorter : IDisposable
+    public class OnesweepSorter : ISorter
     {
         #region Constants
         private const int MaxDispatchSize = 65535;
@@ -63,7 +36,6 @@ namespace Onesweep
         #endregion
 
         #region Shader Property IDs
-        private static readonly int WaveSizeBufferID = Shader.PropertyToID("wave_size_buffer");
         private static readonly int SortCountID = Shader.PropertyToID("sort_count");
         private static readonly int GroupID = Shader.PropertyToID("group_count");
         private static readonly int BucketCountBufferID = Shader.PropertyToID("bucket_count_buffer");
@@ -133,7 +105,7 @@ namespace Onesweep
         public WaveSize WaveSize { get; private set; }
         public int MaxSortCount { get; private set; }
 
-        public static WaveSize StoredWaveSize { get; private set; } = WaveSize.Unknown; // for storing the wave size of the device
+        private static bool _hasDisplayedOnesweepWarning = false;
 
         /// <summary>
         /// Initializes Sorter.
@@ -160,7 +132,17 @@ namespace Onesweep
         {
             Inited = false;
 
-            if (SystemInfo.graphicsDeviceType != GraphicsDeviceType.Direct3D12)
+            if (!_hasDisplayedOnesweepWarning)
+            {
+                Debug.LogWarning(
+                    "Onesweep Warning:\n" +
+                    "Potential for deadlocks cannot be definitively ruled out, and execution speed may be unstable at times. Please use with caution.\n" +
+                    "A stable alternative, TraditionalSorter, is also available."
+                    );
+                _hasDisplayedOnesweepWarning = true;
+            }
+
+            if (SorterCommon.GraphicsDeviceTypeIsDirect3D12())
                 throw new InvalidOperationException(
                     $"DirectX 12 is required, but current Graphics API is: {SystemInfo.graphicsDeviceType}"
                 );
@@ -169,22 +151,22 @@ namespace Onesweep
             SortingOrder = sortingOrder;
             DispatchMode = dispatchMode;
 
-            if (StoredWaveSize != WaveSize.Unknown && waveSize != WaveSize.Unknown && StoredWaveSize != waveSize)
-                throw new ArgumentException($"This device wave size is {StoredWaveSize}.");
+            if (SorterCommon.StoredWaveSize != WaveSize.Unknown && waveSize != WaveSize.Unknown && SorterCommon.StoredWaveSize != waveSize)
+                throw new ArgumentException($"This device wave size is {SorterCommon.StoredWaveSize}.");
             if (waveSize != WaveSize.Unknown)
             {
                 WaveSize = waveSize;
             }
-            else if (StoredWaveSize != WaveSize.Unknown)
+            else if (SorterCommon.StoredWaveSize != WaveSize.Unknown)
             {
-                WaveSize = StoredWaveSize;
+                WaveSize = SorterCommon.StoredWaveSize;
             }
             else
             {
-                StoredWaveSize = GetWaveSize(onesweepComputeConfig, out var waveSizeUInt);
-                if (StoredWaveSize == WaveSize.Unknown)
+                SorterCommon.GetStoreWaveSize(onesweepComputeConfig, out var waveSizeUInt);
+                if (SorterCommon.StoredWaveSize == WaveSize.Unknown)
                     throw new ArgumentException($"This device wave size is {waveSizeUInt}. Wave size must be 32 or 64.");
-                WaveSize = StoredWaveSize;
+                WaveSize = SorterCommon.StoredWaveSize;
             }
 
             MaxSortCount = Mathf.Max(maxSortCount, 1);
@@ -238,100 +220,12 @@ namespace Onesweep
 
             foreach (var cs in _computeShaders)
             {
-                switch (KeyType)
-                {
-                    case KeyType.UInt:
-                        cs.EnableKeyword("KEY_TYPE_UINT");
-                        cs.DisableKeyword("KEY_TYPE_INT");
-                        cs.DisableKeyword("KEY_TYPE_FLOAT");
-                        break;
-                    case KeyType.Int:
-                        cs.DisableKeyword("KEY_TYPE_UINT");
-                        cs.EnableKeyword("KEY_TYPE_INT");
-                        cs.DisableKeyword("KEY_TYPE_FLOAT");
-                        break;
-                    case KeyType.Float:
-                        cs.DisableKeyword("KEY_TYPE_UINT");
-                        cs.DisableKeyword("KEY_TYPE_INT");
-                        cs.EnableKeyword("KEY_TYPE_FLOAT");
-                        break;
-                    default:
-                        throw new ArgumentOutOfRangeException(nameof(KeyType), KeyType, null);
-                }
-                switch (SortingOrder)
-                {
-                    case SortingOrder.Ascending:
-                        cs.EnableKeyword("SORTING_ORDER_ASCENDING");
-                        cs.DisableKeyword("SORTING_ORDER_DESCENDING");
-                        break;
-                    case SortingOrder.Descending:
-                        cs.DisableKeyword("SORTING_ORDER_ASCENDING");
-                        cs.EnableKeyword("SORTING_ORDER_DESCENDING");
-                        break;
-                    default:
-                        throw new ArgumentOutOfRangeException(nameof(SortingOrder), SortingOrder, null);
-                }
-                switch (DispatchMode)
-                {
-                    case DispatchMode.Direct:
-                        cs.EnableKeyword("USE_DIRECT_DISPATCH");
-                        cs.DisableKeyword("USE_INDIRECT_DISPATCH");
-                        break;
-                    case DispatchMode.Indirect:
-                        cs.DisableKeyword("USE_DIRECT_DISPATCH");
-                        cs.EnableKeyword("USE_INDIRECT_DISPATCH");
-                        break;
-                    default:
-                        throw new ArgumentOutOfRangeException(nameof(DispatchMode), DispatchMode, null);
-                }
-                switch (WaveSize)
-                {
-                    case WaveSize.WaveSize32:
-                        cs.EnableKeyword("WAVE_SIZE_32");
-                        cs.DisableKeyword("WAVE_SIZE_64");
-                        break;
-                    case WaveSize.WaveSize64:
-                        cs.DisableKeyword("WAVE_SIZE_32");
-                        cs.EnableKeyword("WAVE_SIZE_64");
-                        break;
-                    case WaveSize.Unknown:
-                    default:
-                        throw new ArgumentOutOfRangeException(nameof(WaveSize), WaveSize, null);
-                }
+                SorterCommon.SetShaderKeywords(cs, keyType, sortingOrder, dispatchMode, WaveSize);
             }
 
             Inited = true;
 
             return this;
-        }
-
-        /// <summary>
-        /// Gets the wave size from the compute shader.
-        /// </summary>
-        /// <param name="onesweepComputeConfig">
-        /// Compute shader configuration for Onesweep.
-        /// </param>
-        /// <param name="waveSize">Outputs the detected wave size.</param>
-        /// <returns>
-        /// Returns the wave size (32 or 64). If the size is something else, returns WaveSize.Unknown.
-        /// </returns>
-        public static WaveSize GetWaveSize(OnesweepComputeConfig onesweepComputeConfig, out uint waveSize)
-        {
-            var waveSizeCs = onesweepComputeConfig.WaveSizeCs;
-            var waveSizeKernel = waveSizeCs.FindKernel("GetWaveSize");
-            var waveSizeBuffer = new GraphicsBuffer(GraphicsBuffer.Target.Structured, 1, sizeof(uint));
-            waveSizeCs.SetBuffer(waveSizeKernel, WaveSizeBufferID, waveSizeBuffer);
-            waveSizeCs.Dispatch(waveSizeKernel, 1, 1, 1);
-            uint[] waveSizeData = new uint[1];
-            waveSizeBuffer.GetData(waveSizeData);
-            waveSizeBuffer.Release();
-            waveSize = waveSizeData[0];
-            return waveSizeData[0] switch
-            {
-                32 => WaveSize.WaveSize32,
-                64 => WaveSize.WaveSize64,
-                _ => WaveSize.Unknown
-            };
         }
 
         /// <summary>
@@ -639,9 +533,21 @@ namespace Onesweep
         }
 
         /// <summary>
+        /// Releases all resources used by the RadixSort instance.
+        /// </summary>
+        public void Dispose()
+        {
+            ReleaseBuffers();
+
+            Inited = false;
+        }
+        #endregion
+
+        #region Private Methods
+        /// <summary>
         /// Releases all allocated GPU buffers.
         /// </summary>
-        public void ReleaseBuffers()
+        private void ReleaseBuffers()
         {
             if (_tempKeyBuffer is not null) { _tempKeyBuffer.Release(); _tempKeyBuffer = null; }
             if (_tempIndexBuffer is not null) { _tempIndexBuffer.Release(); _tempIndexBuffer = null; }
@@ -651,16 +557,6 @@ namespace Onesweep
             if (_sortCountGroupCountBuffer is not null) { _sortCountGroupCountBuffer.Release(); _sortCountGroupCountBuffer = null; }
             if (_buildKernelDispatchArgsBuffer is not null) { _buildKernelDispatchArgsBuffer.Release(); _buildKernelDispatchArgsBuffer = null; }
             if (_sortKernelDispatchArgsBuffer is not null) { _sortKernelDispatchArgsBuffer.Release(); _sortKernelDispatchArgsBuffer = null; }
-        }
-
-        /// <summary>
-        /// Releases all resources used by the RadixSort instance.
-        /// </summary>
-        public void Dispose()
-        {
-            ReleaseBuffers();
-
-            Inited = false;
         }
         #endregion
     }
