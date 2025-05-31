@@ -10,6 +10,7 @@
     "com.unity.mathematics": "1.3.2",
     "com.unity.multiplayer.center": "1.0.0",
     "com.unity.ugui": "2.0.0",
+    "ga.fuquna.rosettaui.uitoolkit": "1.9.2",
     "com.unity.modules.accessibility": "1.0.0",
     "com.unity.modules.ai": "1.0.0",
     "com.unity.modules.androidjni": "1.0.0",
@@ -50,6 +51,14 @@
       "scopes": [
         "com.openupm",
         "com.tayx.graphy"
+      ],
+      "overrideBuiltIns": false
+    },
+    {
+      "name": "fuqunaga",
+      "url": "https://registry.npmjs.com",
+      "scopes": [
+        "ga.fuquna"
       ],
       "overrideBuiltIns": false
     }

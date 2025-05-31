@@ -7,9 +7,9 @@
 
 #pragma multi_compile USE_DIRECT_DISPATCH USE_INDIRECT_DISPATCH
 
-#include "Radix.hlsl"
+#include "../RadixCommon/Radix.hlsl"
 #include "PartitionDescriptor.hlsl"
-#include "DispatchUtils.hlsl"
+#include "../RadixCommon/DispatchUtils.hlsl"
 
 #define DISPATCH_GROUP_SIZE (128u)
 #define THREADS_PER_GROUP (256u)

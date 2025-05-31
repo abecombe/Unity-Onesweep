@@ -1,5 +1,13 @@
-﻿#ifndef CS_ONE_SWEEP_COMMON_WAVE_HLSL
-#define CS_ONE_SWEEP_COMMON_WAVE_HLSL
+﻿#ifndef CS_COMMON_WAVE_HLSL
+#define CS_COMMON_WAVE_HLSL
+
+/**
+ * \brief Provides a common set of preprocessor macros to abstract GPU wave-level operations, enabling portability across different wave sizes (typically 32 or 64 lanes).
+ *
+ * It defines consistent macros for querying the wave size, obtaining lane and wave indices,
+ * and performing ballot operations. This simplifies writing shader code that utilizes
+ * wave intrinsics for fine-grained parallel execution.
+ */
 
 //#pragma use_dxc
 //#pragma require wavebasic
@@ -30,4 +38,4 @@
 
 #define WAVE_SIZE_MASK (WAVE_SIZE - 1u)
 
-#endif /* CS_ONE_SWEEP_COMMON_WAVE_HLSL */
+#endif /* CS_COMMON_WAVE_HLSL */

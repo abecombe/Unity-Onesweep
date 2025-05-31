@@ -133,6 +133,22 @@
         "com.unity.modules.imgui": "1.0.0"
       }
     },
+    "ga.fuquna.rosettaui": {
+      "version": "1.11.0",
+      "depth": 1,
+      "source": "registry",
+      "dependencies": {},
+      "url": "https://registry.npmjs.com"
+    },
+    "ga.fuquna.rosettaui.uitoolkit": {
+      "version": "1.9.2",
+      "depth": 0,
+      "source": "registry",
+      "dependencies": {
+        "ga.fuquna.rosettaui": "1.11.0"
+      },
+      "url": "https://registry.npmjs.com"
+    },
     "com.unity.modules.accessibility": {
       "version": "1.0.0",
       "depth": 0,

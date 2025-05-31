@@ -1,13 +1,17 @@
 ﻿using UnityEngine;
 
-public class FPSSetter : MonoBehaviour
+public class FpsSetter : MonoBehaviour
 {
-    private const int TargetFPS = 10000;
+    [SerializeField] private int _targetFPS = 10000;
 
-    [RuntimeInitializeOnLoadMethod]
-    private static void SetFPS()
+    private void Awake()
+    {
+        SetFPS();
+    }
+
+    private void SetFPS()
     {
         QualitySettings.vSyncCount  = 0;
-        Application.targetFrameRate = TargetFPS;
+        Application.targetFrameRate = _targetFPS;
     }
 }
