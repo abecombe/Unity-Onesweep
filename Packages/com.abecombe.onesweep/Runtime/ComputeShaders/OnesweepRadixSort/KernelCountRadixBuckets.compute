@@ -3,14 +3,14 @@
 // Licensed under the MIT License
 // Modified by abecombe, 2025
 
-#pragma kernel BuildRadixBucketGlobalHistogram
+#pragma kernel CountRadixBuckets
 
 #pragma multi_compile KEY_TYPE_UINT KEY_TYPE_INT KEY_TYPE_FLOAT
 #pragma multi_compile SORTING_ORDER_ASCENDING SORTING_ORDER_DESCENDING
 #pragma multi_compile USE_DIRECT_DISPATCH USE_INDIRECT_DISPATCH
 
-#include "Radix.hlsl"
-#include "DispatchUtils.hlsl"
+#include "../RadixCommon/Radix.hlsl"
+#include "../RadixCommon/DispatchUtils.hlsl"
 
 #define ITEMS_PER_THREAD (64u)
 
@@ -24,16 +24,26 @@ StructuredBuffer<DATA_TYPE> key_in_buffer;
 groupshared uint4 group_shared[GROUP_SHARED_SIZE];
 
 /**
- * \brief Builds the global histogram of the radix buckets.
+ * \brief Builds a global histogram covering the four 8-bit passes of 32-bit keys in a single dispatch.
  *
  * \note dispatch group size: ceil(sort_item_count / ITEMS_PER_GROUP)
  *
- * Each thread group computes a local histogram for a subset of the data
- * using shared memory, and then merges it into the global histogram buffer
- * using atomic operations.
+ * This kernel efficiently counts the occurrences of each possible byte value (0-255)
+ * at each of the four byte positions (passes) within the input keys.
+ * Each thread group processes a segment of the input keys (`key_in_buffer`).
+ * For every key, it determines which bucket it falls into for all four 8-bit radix passes
+ * simultaneously (corresponding to bits 0-7, 8-15, 16-23, and 24-31 for 32-bit keys).
+ *
+ * Counts are first aggregated locally within `group_shared` memory (using `uint4` to hold
+ * counts for all four passes for a given bucket index, and employing InterlockedAdds).
+ * After local aggregation, these per-group totals for all passes and buckets are
+ * atomically added to the single global `bucket_count_buffer`.
+ *
+ * The result is a complete global histogram in `bucket_count_buffer` (size `RADIX_BASE * 4`),
+ * ready to be scanned to determine offsets for all passes of the sort.
  */
 [numthreads(THREADS_PER_GROUP, 1, 1)]
-void BuildRadixBucketGlobalHistogram(uint group_thread_id : SV_GroupThreadID, uint group_id : SV_GroupID)
+void CountRadixBuckets(uint group_thread_id : SV_GroupThreadID, uint group_id : SV_GroupID)
 {
 #if defined(USE_INDIRECT_DISPATCH)
     const uint sort_count = get_sort_count();

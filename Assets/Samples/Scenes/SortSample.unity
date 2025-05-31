@@ -130,7 +130,7 @@ GameObject:
   - component: {fileID: 544217969}
   - component: {fileID: 544217972}
   m_Layer: 0
-  m_Name: RadixSort
+  m_Name: Sorter
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -163,8 +163,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 926117308f7240bcbe3c37eff57d47cf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  _sortingAlgorithm: 0
+  _dispatchMode: 0
+  _useCommandBuffer: 0
   _numData: 1000000
-  _randomValueMax: 100000
+  _randomValueMax: 1000000
   _randomSeed: 0
   _config: {fileID: 11400000, guid: ef59e34a479693946b5fd0aa03709fa6, type: 2}
 --- !u!1 &754477575
@@ -347,10 +350,56 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 0abab5bb77339e4428787a870eb31bd3, type: 3}
+--- !u!1 &1634236763
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1634236764}
+  - component: {fileID: 1634236765}
+  m_Layer: 0
+  m_Name: FpsSetter
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1634236764
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1634236763}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1634236765
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1634236763}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8d2df4b66084c6b488ab066bd9be87a8, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  _targetFPS: 10000
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
   m_Roots:
   - {fileID: 754477577}
   - {fileID: 544217969}
+  - {fileID: 1634236764}
   - {fileID: 784773249}

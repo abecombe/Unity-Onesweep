@@ -13,8 +13,13 @@ MonoBehaviour:
   m_Name: OnesweepComputeConfig
   m_EditorClassIdentifier: 
   WaveSizeCs: {fileID: 7200000, guid: 63a9acc6a08a41199583af51b393e2dd, type: 3}
-  PrecomputeCs: {fileID: 7200000, guid: 32c2fd8e4133452cb120e1010ce3e446, type: 3}
-  InitCs: {fileID: 7200000, guid: db6ad49b80fd4793b852450035c222a2, type: 3}
-  BuildCs: {fileID: 7200000, guid: 427999ada1784b64a555da8fd6d50081, type: 3}
-  ScanCs: {fileID: 7200000, guid: 57068c5877214321b37c3e40b2b62f2f, type: 3}
-  SortCs: {fileID: 7200000, guid: 6d7551ea679641fc90d4f95273baff59, type: 3}
+  OnesweepPrecomputeCs: {fileID: 7200000, guid: 32c2fd8e4133452cb120e1010ce3e446, type: 3}
+  OnesweepInitCs: {fileID: 7200000, guid: db6ad49b80fd4793b852450035c222a2, type: 3}
+  OnesweepCountCs: {fileID: 7200000, guid: 427999ada1784b64a555da8fd6d50081, type: 3}
+  OnesweepScanCs: {fileID: 7200000, guid: 57068c5877214321b37c3e40b2b62f2f, type: 3}
+  OnesweepSortCs: {fileID: 7200000, guid: 6d7551ea679641fc90d4f95273baff59, type: 3}
+  TraditionalPrecomputeCs: {fileID: 7200000, guid: ae174e4280534b3e87c0fb58870603ee, type: 3}
+  TraditionalCountCs: {fileID: 7200000, guid: ac7d402552bc4d3e96ce5a34cdc38d0a, type: 3}
+  TraditionalScanLocalCs: {fileID: 7200000, guid: 70cc5cec31114f0b995de881bebcb83c, type: 3}
+  TraditionalScanGlobalCs: {fileID: 7200000, guid: e4e464461ceb4e1cb0e1a275cf697a45, type: 3}
+  TraditionalSortCs: {fileID: 7200000, guid: 3b11ab27818e42d08f89c1f925d2f36c, type: 3}

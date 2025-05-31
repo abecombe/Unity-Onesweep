@@ -1,0 +1,68 @@
+﻿// This file includes code adapted from GPUSorting by Thomas Smith
+// https://github.com/b0nes164/GPUSorting
+// Licensed under the MIT License
+// Modified by abecombe, 2025
+
+#pragma kernel ScanRadixBuckets
+
+#pragma use_dxc
+#pragma require wavebasic
+#pragma require waveballot
+#pragma multi_compile WAVE_SIZE_32 WAVE_SIZE_64
+#pragma multi_compile USE_DIRECT_DISPATCH USE_INDIRECT_DISPATCH
+
+#include "../RadixCommon/Radix.hlsl"
+#include "PartitionDescriptor.hlsl"
+#include "../Common/Wave.hlsl"
+#include "../RadixCommon/DispatchUtils.hlsl"
+
+#define THREADS_PER_GROUP (RADIX_BASE)
+
+StructuredBuffer<uint> bucket_count_buffer; // size: RADIX_BASE * RADIX_STEP_COUNT
+RWStructuredBuffer<PARTITION_DESCRIPTOR> partition_descriptor_buffer; // size: RADIX_BASE * group_count * RADIX_STEP_COUNT
+
+groupshared uint group_shared[RADIX_BASE];
+
+/**
+ * \brief Performs an inclusive parallel scan on the global bucket counts for each radix sort pass.
+ *
+ * \note Dispatch group size: RADIX_STEP_COUNT
+ *
+ * This kernel is dispatched with `RADIX_STEP_COUNT` thread groups (e.g., 4 groups for 32-bit keys),
+ * where each group (`SV_GroupID`) processes the histogram for one complete radix pass.
+ * The input `bucket_count_buffer` holds the global counts for all buckets across all passes.
+ *
+ * Within each thread group, `RADIX_BASE` threads perform an efficient in-group exclusive prefix sum
+ * on the bucket counts corresponding to their assigned pass. The resulting cumulative sums
+ * are then stored as the 'value' component of `PARTITION_DESCRIPTOR` objects
+ * (with their 'flag' component set to `FLAG_INVALID`) into the `partition_descriptor_buffer`.
+ * This output provides the cumulative distribution of elements for each bucket within each pass.
+ */
+[numthreads(THREADS_PER_GROUP, 1, 1)]
+void ScanRadixBuckets(uint group_thread_id : SV_GroupThreadID, uint group_id : SV_GroupID)
+{
+#if defined(USE_INDIRECT_DISPATCH)
+    const uint group_count = get_group_count();
+#endif
+
+    const uint bucket_count = bucket_count_buffer[group_thread_id + group_id * RADIX_BASE];
+
+    uint scanned_bucket_count = bucket_count + WavePrefixSum(bucket_count); // inclusive scan
+    // ((LANE_INDEX + 1u) & WAVE_SIZE_MASK) + (group_thread_id & ~WAVE_SIZE_MASK) means
+    // 1, 2, .. , 31, 0, 33, 34, .. , 63, 32, 65, 66, .. , 95, 64, ...
+    group_shared[((LANE_INDEX + 1u) & WAVE_SIZE_MASK) + (group_thread_id & ~WAVE_SIZE_MASK)] = scanned_bucket_count;
+
+    GroupMemoryBarrierWithGroupSync();
+
+    if (group_thread_id < WAVE_COUNT_IN_GROUP(THREADS_PER_GROUP))
+        group_shared[group_thread_id * WAVE_SIZE] = WavePrefixSum(group_shared[group_thread_id * WAVE_SIZE]);
+
+    GroupMemoryBarrierWithGroupSync();
+
+    scanned_bucket_count = group_shared[group_thread_id];
+    if (LANE_INDEX != 0u && group_thread_id >= WAVE_SIZE)
+        scanned_bucket_count += group_shared[WAVE_INDEX(group_thread_id) * WAVE_SIZE];
+
+    partition_descriptor_buffer[get_partition_descriptor_buffer_address(group_thread_id, 0, group_count, group_id)]
+        = create_partition_descriptor(scanned_bucket_count, FLAG_INVALID);
+}

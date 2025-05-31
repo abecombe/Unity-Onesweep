@@ -1,0 +1,158 @@
+﻿// This file includes code adapted from GPUSorting by Thomas Smith
+// https://github.com/b0nes164/GPUSorting
+// Licensed under the MIT License
+// Modified by abecombe, 2025
+
+#pragma kernel Sort
+
+#pragma use_dxc
+#pragma require wavebasic
+#pragma require waveballot
+#pragma multi_compile WAVE_SIZE_32 WAVE_SIZE_64
+#pragma multi_compile KEY_TYPE_UINT KEY_TYPE_INT KEY_TYPE_FLOAT
+#pragma multi_compile SORTING_ORDER_ASCENDING SORTING_ORDER_DESCENDING
+#pragma multi_compile USE_DIRECT_DISPATCH USE_INDIRECT_DISPATCH
+#pragma multi_compile KEY_ONLY KEY_PAYLOAD
+
+#include "../RadixCommon/RadixMain.hlsl"
+#include "../RadixCommon/DispatchUtils.hlsl"
+#include "PartitionDescriptor.hlsl"
+
+globallycoherent RWStructuredBuffer<uint> partition_index_buffer; // size: RADIX_STEP_COUNT
+globallycoherent RWStructuredBuffer<PARTITION_DESCRIPTOR> partition_descriptor_buffer; // size: RADIX_BASE * group_count * RADIX_STEP_COUNT
+
+/**
+ * \brief Retrieves the group's partition index.
+ *
+ * \note Writes to group_shared memory:
+ *       [SHARED_MEMORY_MAX_SIZE - 1u] is used to store the partition index.
+ */
+inline uint GetPartitionIndex(in uint group_thread_id)
+{
+    if (group_thread_id == 0u)
+        InterlockedAdd(partition_index_buffer[CURRENT_RADIX_STEP(current_pass_radix_shift)], 1u, group_shared[SHARED_MEMORY_MAX_SIZE - 1u]);
+    GroupMemoryBarrierWithGroupSync();
+
+    return group_shared[SHARED_MEMORY_MAX_SIZE - 1u];
+}
+
+/**
+ * \brief Writes partition descriptors to global memory for the given bucket and partition.
+ */
+inline void StorePartitionDescriptorToGlobal(in uint bucket_id, in uint partition_index, in uint group_count, in uint value, inout uint prev_reduction)
+{
+    if (partition_index == 0u)
+    {
+        InterlockedAdd(
+            partition_descriptor_buffer[get_partition_descriptor_buffer_address(bucket_id, partition_index, group_count, CURRENT_RADIX_STEP(current_pass_radix_shift))],
+            create_partition_descriptor(value, FLAG_PREFIX - FLAG_INVALID),
+            prev_reduction
+        );
+        prev_reduction = get_partition_descriptor_value(prev_reduction);
+    }
+    else
+        InterlockedCompareStore(
+            partition_descriptor_buffer[get_partition_descriptor_buffer_address(bucket_id, partition_index, group_count, CURRENT_RADIX_STEP(current_pass_radix_shift))],
+            create_partition_descriptor(0u, FLAG_INVALID),
+            create_partition_descriptor(value, FLAG_AGGREGATE)
+        );
+}
+
+/**
+ * \brief Performs a *Lookback* reduction across previous partition descriptors.
+ *
+ * This function traverses previous partition descriptors for the same bucket
+ * to compute a cumulative reduction value (`prev_reduction`)
+ * up to the most recent descriptor marked as `PREFIX`.
+ *
+ * \note Writes to group_shared memory:
+ *       [bucket_id (0-255)] the result of the *Lookback* reduction.
+ */
+inline void Lookback(in uint bucket_id, in uint partition_index, in uint group_count, in uint prev_reduction)
+{
+    int look_back_partition_index = (int)partition_index - 1;
+
+    while (look_back_partition_index >= 0)
+    {
+        const PARTITION_DESCRIPTOR partition_descriptor =
+            partition_descriptor_buffer[get_partition_descriptor_buffer_address(bucket_id, look_back_partition_index, group_count, CURRENT_RADIX_STEP(current_pass_radix_shift))];
+        if (get_partition_descriptor_flag(partition_descriptor) == FLAG_AGGREGATE)
+        {
+            prev_reduction += get_partition_descriptor_value(partition_descriptor);
+            look_back_partition_index--;
+        }
+        else if (get_partition_descriptor_flag(partition_descriptor) == FLAG_PREFIX)
+        {
+            prev_reduction += get_partition_descriptor_value(partition_descriptor);
+            InterlockedAdd(
+                partition_descriptor_buffer[get_partition_descriptor_buffer_address(bucket_id, partition_index, group_count, CURRENT_RADIX_STEP(current_pass_radix_shift))],
+                create_partition_descriptor(prev_reduction, FLAG_PREFIX - FLAG_AGGREGATE)
+            );
+            break;
+        }
+    }
+
+    // subtract the first index of bucket_id in the group
+    // to make it easier to calculate the final destination of individual data
+    group_shared[bucket_id] = prev_reduction - group_shared[bucket_id];
+}
+
+/**
+ * \brief Executes a radix sort pass employing a "lookback" scan mechanism for determining global data placement.
+ *
+ * \note Dispatch group size: ceil(sort_item_count / ITEMS_PER_GROUP)
+ *
+ * This kernel implements a sort pass that minimizes global barriers by using partition descriptors.
+ * Each thread group acquires a unique partition index for the current radix pass. It then loads keys,
+ * performs a local sort (counting items per bucket, local scan, and reordering within shared memory),
+ * and writes its per-bucket counts to a global `partition_descriptor_buffer`.
+ *
+ * A "lookback" phase follows: threads read preceding partition descriptors from this global buffer.
+ * This allows each group to calculate the true global starting offset for its items in each bucket by
+ * accumulating sums from `FLAG_AGGREGATE` descriptors and incorporating values from `FLAG_PREFIX`
+ * descriptors, effectively performing a distributed global scan.
+ *
+ * Once these global offsets are resolved (and stored into `group_shared`), the locally sorted keys
+ * (and any associated payloads) are scattered to their final positions in the output buffers.
+ * This method aims to reduce the number of distinct global synchronization and scan kernel dispatches.
+ */
+[numthreads(THREADS_PER_GROUP, 1, 1)]
+void Sort(uint group_thread_id : SV_GroupThreadID)
+{
+#if defined(USE_INDIRECT_DISPATCH)
+    uint sort_count;
+    uint group_count;
+    get_sort_count_group_count(sort_count, group_count);
+#endif
+
+    const uint group_id = GetPartitionIndex(group_thread_id);
+
+    const ItemsArray keys = LoadKeys(group_thread_id, group_id, sort_count, group_count);
+    ItemsArray16bit offsets = ComputeWaveLevelLocalOffsets(group_thread_id, keys);
+    GroupMemoryBarrierWithGroupSync();
+
+    const uint bucket_total_count_in_group = ExclusiveScanBucketCountsInGroup(group_thread_id);
+    uint prev_reduction = 0u;
+    StorePartitionDescriptorToGlobal(group_thread_id, group_id, group_count, bucket_total_count_in_group, prev_reduction);
+    GroupMemoryBarrierWithGroupSync();
+
+    ScanBucketTotalCountExclusiveToSharedMemory(group_thread_id, bucket_total_count_in_group);
+    GroupMemoryBarrierWithGroupSync();
+    UpdateLocalOffsetsFromWaveToGroupLevel(group_thread_id, keys, offsets);
+    GroupMemoryBarrierWithGroupSync();
+
+    SortKeysInGroup(offsets, keys);
+
+    Lookback(group_thread_id, group_id, group_count, prev_reduction);
+    GroupMemoryBarrierWithGroupSync();
+
+    #if defined(KEY_ONLY)
+    StoreKeys(group_thread_id, group_id, sort_count, group_count);
+    #elif defined(KEY_PAYLOAD)
+    const ItemsArray out_buffer_indices = StoreKeys(group_thread_id, group_id, sort_count, group_count);
+    GroupMemoryBarrierWithGroupSync();
+    WriteSortedPayloadsToSharedMemory(group_thread_id, group_id, sort_count, group_count, offsets);
+    GroupMemoryBarrierWithGroupSync();
+    StorePayloads(group_thread_id, group_id, sort_count, group_count, out_buffer_indices);
+    #endif
+}

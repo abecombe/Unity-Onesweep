@@ -1,0 +1,117 @@
+﻿// This file includes code adapted from GPUSorting by Thomas Smith
+// https://github.com/b0nes164/GPUSorting
+// Licensed under the MIT License
+// Modified by abecombe, 2025
+
+#pragma kernel ScanLocalBuckets
+
+#pragma use_dxc
+#pragma require wavebasic
+#pragma require waveballot
+#pragma multi_compile WAVE_SIZE_32 WAVE_SIZE_64
+#pragma multi_compile USE_DIRECT_DISPATCH USE_INDIRECT_DISPATCH
+
+#include "../RadixCommon/Radix.hlsl"
+#include "../Common/Wave.hlsl"
+#include "../RadixCommon/DispatchUtils.hlsl"
+
+#define THREADS_PER_GROUP 128
+
+StructuredBuffer<uint> bucket_count_buffer; // size: RADIX_BASE * group_count
+RWStructuredBuffer<uint> scanned_bucket_count_buffer; // size: RADIX_BASE * group_count
+RWStructuredBuffer<uint> total_bucket_count_buffer; // size: RADIX_BASE
+
+groupshared uint group_shared[THREADS_PER_GROUP];
+
+/**
+ * \brief Performs an exclusive scan (prefix sum) on the buffer of bucket counts.
+ *
+ * \note Dispatch group size: RADIX_BASE. Each thread group (SV_GroupID) processes one bucket.
+ *
+ * This kernel takes the per-group bucket counts, calculated in a previous pass,
+ * and computes a prefix sum across all groups for each bucket.
+ * The result is the starting offset for each bucket in the final sorted buffer.
+ *
+ * The scanned offsets are written to `scanned_bucket_count_buffer`, and the
+ * total number of elements per bucket is written to `total_bucket_count_buffer`.
+ */
+[numthreads(THREADS_PER_GROUP, 1, 1)]
+void ScanLocalBuckets(uint group_thread_id : SV_GroupThreadID, uint bucket_id : SV_GroupID)
+{
+#if defined(USE_INDIRECT_DISPATCH)
+    const uint group_count = get_group_count();
+#endif
+
+    if (group_count == 0) return;
+
+    uint reduction = 0;
+    uint group_id;
+
+    const uint loop_group_count = ((group_count + THREADS_PER_GROUP - 1) / THREADS_PER_GROUP - 1) * THREADS_PER_GROUP;
+
+    for (group_id = group_thread_id; group_id < loop_group_count; group_id += THREADS_PER_GROUP)
+    {
+        const uint bucket_count = bucket_count_buffer[group_id * RADIX_BASE + bucket_id];
+
+        uint scanned_bucket_count = bucket_count + WavePrefixSum(bucket_count); // inclusive scan
+        // ((LANE_INDEX + 1u) & WAVE_SIZE_MASK) + (group_thread_id & ~WAVE_SIZE_MASK) means
+        // 1, 2, .. , 31, 0, 33, 34, .. , 63, 32, 65, 66, .. , 95, 64, ...
+        group_shared[((LANE_INDEX + 1u) & WAVE_SIZE_MASK) + (group_thread_id & ~WAVE_SIZE_MASK)] = scanned_bucket_count;
+
+        GroupMemoryBarrierWithGroupSync();
+
+        if (group_thread_id < WAVE_COUNT_IN_GROUP(THREADS_PER_GROUP))
+            group_shared[group_thread_id * WAVE_SIZE] = WavePrefixSum(group_shared[group_thread_id * WAVE_SIZE]);
+
+        GroupMemoryBarrierWithGroupSync();
+
+        scanned_bucket_count = group_shared[group_thread_id];
+        if (LANE_INDEX != 0u && group_thread_id >= WAVE_SIZE)
+            scanned_bucket_count += group_shared[WAVE_INDEX(group_thread_id) * WAVE_SIZE];
+
+        scanned_bucket_count_buffer[bucket_id * group_count + group_id] = scanned_bucket_count + reduction;
+
+        if (group_thread_id == THREADS_PER_GROUP - 1)
+        {
+            group_shared[group_thread_id] = bucket_count + scanned_bucket_count;
+        }
+
+        GroupMemoryBarrierWithGroupSync();
+
+        reduction += group_shared[THREADS_PER_GROUP - 1];
+
+        GroupMemoryBarrierWithGroupSync();
+    }
+
+    {
+        uint bucket_count = 0;
+        if (group_id < group_count)
+            bucket_count = bucket_count_buffer[group_id * RADIX_BASE + bucket_id];
+
+        uint scanned_bucket_count = bucket_count + WavePrefixSum(bucket_count); // inclusive scan
+        // ((LANE_INDEX + 1u) & WAVE_SIZE_MASK) + (group_thread_id & ~WAVE_SIZE_MASK) means
+        // 1, 2, .. , 31, 0, 33, 34, .. , 63, 32, 65, 66, .. , 95, 64, ...
+        group_shared[((LANE_INDEX + 1u) & WAVE_SIZE_MASK) + (group_thread_id & ~WAVE_SIZE_MASK)] = scanned_bucket_count;
+
+        GroupMemoryBarrierWithGroupSync();
+
+        if (group_thread_id < WAVE_COUNT_IN_GROUP(THREADS_PER_GROUP))
+            group_shared[group_thread_id * WAVE_SIZE] = WavePrefixSum(group_shared[group_thread_id * WAVE_SIZE]);
+
+        GroupMemoryBarrierWithGroupSync();
+
+        if (group_id < group_count)
+        {
+            scanned_bucket_count = group_shared[group_thread_id];
+            if (LANE_INDEX != 0u && group_thread_id >= WAVE_SIZE)
+                scanned_bucket_count += group_shared[WAVE_INDEX(group_thread_id) * WAVE_SIZE];
+
+            scanned_bucket_count_buffer[bucket_id * group_count + group_id] = scanned_bucket_count + reduction;
+
+            if (group_id == group_count - 1)
+            {
+                total_bucket_count_buffer[bucket_id] = bucket_count + scanned_bucket_count + reduction;
+            }
+        }
+    }
+}

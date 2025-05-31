@@ -1,0 +1,54 @@
+﻿#pragma kernel ScanGlobalBuckets
+
+#pragma use_dxc
+#pragma require wavebasic
+#pragma require waveballot
+#pragma multi_compile WAVE_SIZE_32 WAVE_SIZE_64
+
+#include "../RadixCommon/Radix.hlsl"
+#include "../Common/Wave.hlsl"
+
+#define THREADS_PER_GROUP (RADIX_BASE)
+
+StructuredBuffer<uint> total_bucket_count_buffer; // size: RADIX_BASE
+RWStructuredBuffer<uint> scanned_total_bucket_count_buffer; // size: RADIX_BASE
+
+groupshared uint group_shared[RADIX_BASE];
+
+/**
+ * \brief Performs a prefix sum (scan) on the total element count for each bucket.
+ *
+ * \note Dispatch group size: 1
+ *
+ * This kernel runs as a **single thread group** and takes the total count for each
+ * bucket (`total_bucket_count_buffer`), aggregated from the previous step, as input.
+ *
+ * The RADIX_BASE threads (e.g., 256) execute an efficient parallel scan algorithm
+ * using shared memory to compute the cumulative sum of the bucket counts.
+ *
+ * This result (an inclusive scan) is used to determine the global starting offset
+ * for each bucket in the final, fully sorted buffer.
+ */
+[numthreads(THREADS_PER_GROUP, 1, 1)]
+void ScanGlobalBuckets(uint group_thread_id : SV_GroupThreadID)
+{
+    const uint total_bucket_count = total_bucket_count_buffer[group_thread_id];
+
+    uint scanned_total_bucket_count = total_bucket_count + WavePrefixSum(total_bucket_count); // inclusive scan
+    // ((LANE_INDEX + 1u) & WAVE_SIZE_MASK) + (group_thread_id & ~WAVE_SIZE_MASK) means
+    // 1, 2, .. , 31, 0, 33, 34, .. , 63, 32, 65, 66, .. , 95, 64, ...
+    group_shared[((LANE_INDEX + 1u) & WAVE_SIZE_MASK) + (group_thread_id & ~WAVE_SIZE_MASK)] = scanned_total_bucket_count;
+
+    GroupMemoryBarrierWithGroupSync();
+
+    if (group_thread_id < WAVE_COUNT_IN_GROUP(THREADS_PER_GROUP))
+        group_shared[group_thread_id * WAVE_SIZE] = WavePrefixSum(group_shared[group_thread_id * WAVE_SIZE]);
+
+    GroupMemoryBarrierWithGroupSync();
+
+    scanned_total_bucket_count = group_shared[group_thread_id];
+    if (LANE_INDEX != 0u && group_thread_id >= WAVE_SIZE)
+        scanned_total_bucket_count += group_shared[WAVE_INDEX(group_thread_id) * WAVE_SIZE];
+
+    scanned_total_bucket_count_buffer[group_thread_id] = scanned_total_bucket_count;
+}

@@ -3,21 +3,24 @@
 // Licensed under the MIT License
 // Modified by abecombe, 2025
 
-#pragma kernel SortOnesweep
+#ifndef CS_RADIX_COMMON_RADIX_MAIN_HLSL
+#define CS_RADIX_COMMON_RADIX_MAIN_HLSL
 
-#pragma use_dxc
-#pragma require wavebasic
-#pragma require waveballot
-#pragma multi_compile WAVE_SIZE_32 WAVE_SIZE_64
-#pragma multi_compile KEY_TYPE_UINT KEY_TYPE_INT KEY_TYPE_FLOAT
-#pragma multi_compile SORTING_ORDER_ASCENDING SORTING_ORDER_DESCENDING
-#pragma multi_compile USE_DIRECT_DISPATCH USE_INDIRECT_DISPATCH
+//#pragma use_dxc
+//#pragma require wavebasic
+//#pragma require waveballot
+//#pragma multi_compile WAVE_SIZE_32 WAVE_SIZE_64
+//#pragma multi_compile KEY_TYPE_UINT KEY_TYPE_INT KEY_TYPE_FLOAT
+//#pragma multi_compile SORTING_ORDER_ASCENDING SORTING_ORDER_DESCENDING
+//#pragma multi_compile KEY_ONLY KEY_PAYLOAD
 
-#include "../OnesweepCommon/Constants.hlsl"
+#include "../Common/Constants.hlsl"
+#include "../Common/Wave.hlsl"
 #include "Radix.hlsl"
-#include "PartitionDescriptor.hlsl"
-#include "../OnesweepCommon/Wave.hlsl"
-#include "DispatchUtils.hlsl"
+
+#if !defined(KEY_ONLY) && !defined(KEY_PAYLOAD)
+#define KEY_ONLY
+#endif
 
 #define THREADS_PER_GROUP (RADIX_BASE)
 
@@ -25,13 +28,12 @@
 #define ITEMS_PER_GROUP (THREADS_PER_GROUP * ITEMS_PER_THREAD)
 #define ITEMS_PER_WAVE (WAVE_SIZE * ITEMS_PER_THREAD)
 
-globallycoherent RWStructuredBuffer<uint> partition_index_buffer; // size: RADIX_STEP_COUNT
-globallycoherent RWStructuredBuffer<PARTITION_DESCRIPTOR> partition_descriptor_buffer; // size: RADIX_BASE * group_count * RADIX_STEP_COUNT
-
 StructuredBuffer<DATA_TYPE> key_in_buffer;
 RWStructuredBuffer<DATA_TYPE> key_out_buffer;
-StructuredBuffer<uint> index_in_buffer;
-RWStructuredBuffer<uint> index_out_buffer;
+#if defined(KEY_PAYLOAD)
+StructuredBuffer<uint> payload_in_buffer;
+RWStructuredBuffer<uint> payload_out_buffer;
+#endif
 
 uint current_pass_radix_shift;
 
@@ -50,40 +52,23 @@ struct ItemsArray16bit
 };
 
 /**
- * \brief Computes the start index into the key and index buffers for the current thread.
+ * \brief Computes the start index into the key and payload buffers for the current thread.
  */
-inline uint GetThreadKeyIndexStartIndex(in uint group_thread_id, in uint partition_index)
+inline uint GetThreadKeyPayloadStartIndex(in uint group_thread_id, in uint group_id)
 {
-    return LANE_INDEX + WAVE_INDEX(group_thread_id) * ITEMS_PER_WAVE + partition_index * ITEMS_PER_GROUP;
-}
-
-/**
- * \brief Retrieves the group's partition index.
- *
- * \note Writes to group_shared memory:
- *       [SHARED_MEMORY_MAX_SIZE - 1u] is used to store the partition index.
- */
-inline uint GetPartitionIndex(in uint group_thread_id, in uint group_id)
-{
-    // return group_id;
-
-    if (group_thread_id == 0u)
-        InterlockedAdd(partition_index_buffer[CURRENT_RADIX_STEP(current_pass_radix_shift)], 1u, group_shared[SHARED_MEMORY_MAX_SIZE - 1u]);
-    GroupMemoryBarrierWithGroupSync();
-
-    return group_shared[SHARED_MEMORY_MAX_SIZE - 1u];
+    return LANE_INDEX + WAVE_INDEX(group_thread_id) * ITEMS_PER_WAVE + group_id * ITEMS_PER_GROUP;
 }
 
 /**
  * \brief Loads keys into local storage for the current thread.
  */
-inline ItemsArray LoadKeys(in uint group_thread_id, in uint partition_index, in uint sort_count, in uint group_count)
+inline ItemsArray LoadKeys(in uint group_thread_id, in uint group_id, in uint sort_count, in uint group_count)
 {
     ItemsArray keys;
-    if (partition_index < group_count - 1u)
+    if (group_id < group_count - 1u)
     {
         [unroll(ITEMS_PER_THREAD)]
-        for (uint i = 0u, key_index = GetThreadKeyIndexStartIndex(group_thread_id, partition_index); i < ITEMS_PER_THREAD; i++, key_index += WAVE_SIZE)
+        for (uint i = 0u, key_index = GetThreadKeyPayloadStartIndex(group_thread_id, group_id); i < ITEMS_PER_THREAD; i++, key_index += WAVE_SIZE)
         {
             keys.data[i] = from_original_key_to_sorting_key(key_in_buffer[key_index]);
         }
@@ -91,12 +76,12 @@ inline ItemsArray LoadKeys(in uint group_thread_id, in uint partition_index, in 
     else
     {
         [unroll(ITEMS_PER_THREAD)]
-        for (uint i = 0u, key_index = GetThreadKeyIndexStartIndex(group_thread_id, partition_index); i < ITEMS_PER_THREAD; i++, key_index += WAVE_SIZE)
+        for (uint i = 0u, key_index = GetThreadKeyPayloadStartIndex(group_thread_id, group_id); i < ITEMS_PER_THREAD; i++, key_index += WAVE_SIZE)
         {
             if (key_index < sort_count)
                 keys.data[i] = from_original_key_to_sorting_key(key_in_buffer[key_index]);
             else
-                keys.data[i] = 0xffffffffu;
+                keys.data[i] = ALL_BITS_SET;
         }
     }
     return keys;
@@ -207,28 +192,6 @@ inline uint ExclusiveScanBucketCountsInGroup(in uint bucket_id)
 }
 
 /**
- * \brief Writes partition descriptors to global memory for the given bucket and partition.
- */
-inline void StorePartitionDescriptorToGlobal(in uint bucket_id, in uint partition_index, in uint group_count, in uint value, inout uint prev_reduction)
-{
-    if (partition_index == 0u)
-    {
-        InterlockedAdd(
-            partition_descriptor_buffer[get_partition_descriptor_buffer_address(bucket_id, partition_index, group_count, CURRENT_RADIX_STEP(current_pass_radix_shift))],
-            create_partition_descriptor(value, FLAG_PREFIX - FLAG_INVALID),
-            prev_reduction
-        );
-        prev_reduction = get_partition_descriptor_value(prev_reduction);
-    }
-    else
-        InterlockedCompareStore(
-            partition_descriptor_buffer[get_partition_descriptor_buffer_address(bucket_id, partition_index, group_count, CURRENT_RADIX_STEP(current_pass_radix_shift))],
-            create_partition_descriptor(0u, FLAG_INVALID),
-            create_partition_descriptor(value, FLAG_AGGREGATE)
-        );
-}
-
-/**
  * \brief Computes the exclusive prefix sum of bucket counts across the group.
  *
  * \note Writes to group_shared memory:
@@ -290,52 +253,44 @@ inline void SortKeysInGroup(in ItemsArray16bit new_ids, in ItemsArray keys)
     }
 }
 
+#if defined(KEY_ONLY)
 /**
- * \brief Performs a *Lookback* reduction across previous partition descriptors.
- *
- * This function traverses previous partition descriptors for the same bucket
- * to compute a cumulative reduction value (`prev_reduction`)
- * up to the most recent descriptor marked as `PREFIX`.
- *
- * \note Writes to group_shared memory:
- *       [bucket_id (0-255)] the result of the *Lookback* reduction as an `int`.
+ * \brief Writes sorted keys from shared memory to the global buffer.
  */
-inline void Lookback(in uint bucket_id, in uint partition_index, in uint group_count, in uint prev_reduction)
+inline void StoreKeys(in uint group_thread_id, in uint group_id, in uint sort_count, in uint group_count)
 {
-    int look_back_partition_index = (int)partition_index - 1;
-
-    while (look_back_partition_index >= 0)
+    if (group_id < group_count - 1u)
     {
-        const PARTITION_DESCRIPTOR partition_descriptor =
-            partition_descriptor_buffer[get_partition_descriptor_buffer_address(bucket_id, look_back_partition_index, group_count, CURRENT_RADIX_STEP(current_pass_radix_shift))];
-        if (get_partition_descriptor_flag(partition_descriptor) == FLAG_AGGREGATE)
+        [unroll(ITEMS_PER_THREAD)]
+        for (uint i = 0, j = group_thread_id; i < ITEMS_PER_THREAD; i++, j += THREADS_PER_GROUP)
         {
-            prev_reduction += get_partition_descriptor_value(partition_descriptor);
-            look_back_partition_index--;
-        }
-        else if (get_partition_descriptor_flag(partition_descriptor) == FLAG_PREFIX)
-        {
-            prev_reduction += get_partition_descriptor_value(partition_descriptor);
-            InterlockedAdd(
-                partition_descriptor_buffer[get_partition_descriptor_buffer_address(bucket_id, partition_index, group_count, CURRENT_RADIX_STEP(current_pass_radix_shift))],
-                create_partition_descriptor(prev_reduction, FLAG_PREFIX - FLAG_AGGREGATE)
-            );
-            break;
+            const uint key = group_shared[j + RADIX_BASE];
+            key_out_buffer[group_shared[get_radix_digit(key, current_pass_radix_shift)] + j] = from_sorting_key_to_original_key(key);
         }
     }
-
-    // subtract the first index of bucket_id in the group
-    // to make it easier to calculate the final destination of individual data
-    group_shared[bucket_id] = prev_reduction - group_shared[bucket_id];
+    else
+    {
+        const uint group_sort_count = sort_count - (group_count - 1u) * ITEMS_PER_GROUP;
+        [unroll(ITEMS_PER_THREAD)]
+        for (uint i = 0, j = group_thread_id; i < ITEMS_PER_THREAD; i++, j += THREADS_PER_GROUP)
+        {
+            if (j < group_sort_count)
+            {
+                const uint key = group_shared[j + RADIX_BASE];
+                key_out_buffer[group_shared[get_radix_digit(key, current_pass_radix_shift)] + j] = from_sorting_key_to_original_key(key);
+            }
+        }
+    }
 }
 
+#elif defined(KEY_PAYLOAD)
 /**
  * \brief Writes sorted keys from shared memory to the global buffer and returns their final indices.
  */
-inline ItemsArray StoreKeys(in uint group_thread_id, in uint partition_index, in uint sort_count, in uint group_count)
+inline ItemsArray StoreKeys(in uint group_thread_id, in uint group_id, in uint sort_count, in uint group_count)
 {
     ItemsArray out_buffer_indices;
-    if (partition_index < group_count - 1u)
+    if (group_id < group_count - 1u)
     {
         [unroll(ITEMS_PER_THREAD)]
         for (uint i = 0, j = group_thread_id; i < ITEMS_PER_THREAD; i++, j += THREADS_PER_GROUP)
@@ -363,43 +318,43 @@ inline ItemsArray StoreKeys(in uint group_thread_id, in uint partition_index, in
 }
 
 /**
- * \brief Loads original indices and writes them to shared memory at their new computed positions.
+ * \brief Loads original payloads and writes them to shared memory at their new computed positions.
  *
  * \note Writes to group_shared memory:
- *       [items (0-ITEMS_PER_GROUP - 1) + RADIX_BASE(256)] stores the sorted indices.
+ *       [items (0-ITEMS_PER_GROUP - 1) + RADIX_BASE(256)] stores the sorted payloads.
  */
-inline void WriteSortedIndicesToSharedMemory(in uint group_thread_id, in uint partition_index, in uint sort_count, in uint group_count, in ItemsArray16bit new_ids)
+inline void WriteSortedPayloadsToSharedMemory(in uint group_thread_id, in uint group_id, in uint sort_count, in uint group_count, in ItemsArray16bit new_ids)
 {
-    if (partition_index < group_count - 1u)
+    if (group_id < group_count - 1u)
     {
         [unroll(ITEMS_PER_THREAD)]
-        for (uint i = 0u, index_index = GetThreadKeyIndexStartIndex(group_thread_id, partition_index); i < ITEMS_PER_THREAD; i++, index_index += WAVE_SIZE)
+        for (uint i = 0u, payload_index = GetThreadKeyPayloadStartIndex(group_thread_id, group_id); i < ITEMS_PER_THREAD; i++, payload_index += WAVE_SIZE)
         {
-            group_shared[new_ids.data[i] + RADIX_BASE] = index_in_buffer[index_index];
+            group_shared[new_ids.data[i] + RADIX_BASE] = payload_in_buffer[payload_index];
         }
     }
     else
     {
         [unroll(ITEMS_PER_THREAD)]
-        for (uint i = 0u, index_index = GetThreadKeyIndexStartIndex(group_thread_id, partition_index); i < ITEMS_PER_THREAD; i++, index_index += WAVE_SIZE)
+        for (uint i = 0u, payload_index = GetThreadKeyPayloadStartIndex(group_thread_id, group_id); i < ITEMS_PER_THREAD; i++, payload_index += WAVE_SIZE)
         {
-            if (index_index < sort_count)
-                group_shared[new_ids.data[i] + RADIX_BASE] = index_in_buffer[index_index];
+            if (payload_index < sort_count)
+                group_shared[new_ids.data[i] + RADIX_BASE] = payload_in_buffer[payload_index];
         }
     }
 }
 
 /**
- * \brief Writes sorted indices from shared memory to the global buffer.
+ * \brief Writes sorted payloads from shared memory to the global buffer.
  */
-inline void StoreIndices(in uint group_thread_id, in uint partition_index, in uint sort_count, in uint group_count, in ItemsArray out_buffer_indices)
+inline void StorePayloads(in uint group_thread_id, in uint group_id, in uint sort_count, in uint group_count, in ItemsArray out_buffer_indices)
 {
-    if (partition_index < group_count - 1u)
+    if (group_id < group_count - 1u)
     {
         [unroll(ITEMS_PER_THREAD)]
         for (uint i = 0, j = group_thread_id; i < ITEMS_PER_THREAD; i++, j += THREADS_PER_GROUP)
         {
-            index_out_buffer[out_buffer_indices.data[i]] = group_shared[j + RADIX_BASE];
+            payload_out_buffer[out_buffer_indices.data[i]] = group_shared[j + RADIX_BASE];
         }
     }
     else
@@ -410,53 +365,11 @@ inline void StoreIndices(in uint group_thread_id, in uint partition_index, in ui
         {
             if (j < group_sort_count)
             {
-                index_out_buffer[out_buffer_indices.data[i]] = group_shared[j + RADIX_BASE];
+                payload_out_buffer[out_buffer_indices.data[i]] = group_shared[j + RADIX_BASE];
             }
         }
     }
 }
-
-/**
- * \brief Performs a single radix sort sweep for 8 bits of the key.
- *
- * \note Dispatch group size: ceil(sort_item_count / ITEMS_PER_GROUP)
- *
- * This kernel performs one pass of radix sorting (for 8 bits of the key),
- * including local sorting, exclusive scan, offset computation, and final output writing.
- */
-[numthreads(THREADS_PER_GROUP, 1, 1)]
-void SortOnesweep(uint group_id : SV_GroupID, uint group_thread_id : SV_GroupThreadID)
-{
-#if defined(USE_INDIRECT_DISPATCH)
-    uint sort_count;
-    uint group_count;
-    get_sort_count_group_count(sort_count, group_count);
 #endif
 
-    const uint partition_index = GetPartitionIndex(group_thread_id, group_id);
-
-    const ItemsArray keys = LoadKeys(group_thread_id, partition_index, sort_count, group_count);
-    ItemsArray16bit offsets = ComputeWaveLevelLocalOffsets(group_thread_id, keys);
-    GroupMemoryBarrierWithGroupSync();
-
-    const uint bucket_total_count_in_group = ExclusiveScanBucketCountsInGroup(group_thread_id);
-    uint prev_reduction = 0u;
-    StorePartitionDescriptorToGlobal(group_thread_id, partition_index, group_count, bucket_total_count_in_group, prev_reduction);
-    GroupMemoryBarrierWithGroupSync();
-
-    ScanBucketTotalCountExclusiveToSharedMemory(group_thread_id, bucket_total_count_in_group);
-    GroupMemoryBarrierWithGroupSync();
-    UpdateLocalOffsetsFromWaveToGroupLevel(group_thread_id, keys, offsets);
-    GroupMemoryBarrierWithGroupSync();
-
-    SortKeysInGroup(offsets, keys);
-
-    Lookback(group_thread_id, partition_index, group_count, prev_reduction);
-    GroupMemoryBarrierWithGroupSync();
-
-    const ItemsArray out_buffer_indices = StoreKeys(group_thread_id, partition_index, sort_count, group_count);
-    GroupMemoryBarrierWithGroupSync();
-    WriteSortedIndicesToSharedMemory(group_thread_id, partition_index, sort_count, group_count, offsets);
-    GroupMemoryBarrierWithGroupSync();
-    StoreIndices(group_thread_id, partition_index, sort_count, group_count, out_buffer_indices);
-}
+#endif /* CS_RADIX_COMMON_RADIX_MAIN_HLSL */
