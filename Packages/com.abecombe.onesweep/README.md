@@ -61,6 +61,8 @@ It is recommended as a robust alternative if you encounter issues with the Onesw
 
 ## 🛠 Usage
 
+For more detailed usage examples, please refer to the sample scene included in this package.  
+**If you wish to accurately assess performance, it is recommended to create and run a standalone build, as performance figures in the Unity Editor may not be representative of final build performance.**
 ```csharp
 using Onesweep; // Namespace for the sorters
 using UnityEngine;

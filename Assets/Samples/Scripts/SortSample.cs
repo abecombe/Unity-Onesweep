@@ -29,6 +29,7 @@ public class SortSample : MonoBehaviour
     private SortMode _currentSortMode;
     private DispatchMode _currentDispatchMode;
     private int _currentNumData;
+    private string RunningKernels => _dispatchOnlyCopyKernel ? "Copy" : "Copy & Sort";
 
     private ISorter _sorter;
 
@@ -217,22 +218,24 @@ public class SortSample : MonoBehaviour
 
         type[] keyArray = new type[_currentNumData];
         _keyBuffer.GetData(keyArray);
-        uint[] payloadArray = new uint[_currentNumData];
-        _payloadBuffer.GetData(payloadArray);
-        KeyPayloadCombine[] combinedDataArray = keyArray.Select((key, i) => new KeyPayloadCombine(key, payloadArray[i])).ToArray();
-
-        _combinedDataArray = _combinedDataArray.OrderBy(data => data.Key).ToArray();
-        _keyArray = _keyArray.OrderBy(key => key).ToArray();
 
         switch (_currentSortMode)
         {
             case SortMode.KeyOnly:
+                _keyArray = _keyArray.OrderBy(key => key).ToArray();
+
                 if (_keyArray.SequenceEqual(keyArray))
                     Debug.Log("Sorting Success");
                 else
                     Debug.LogError("Sorting Failure");
                 break;
             case SortMode.KeyPayload:
+                uint[] payloadArray = new uint[_currentNumData];
+                _payloadBuffer.GetData(payloadArray);
+
+                KeyPayloadCombine[] combinedDataArray = keyArray.Select((key, i) => new KeyPayloadCombine(key, payloadArray[i])).ToArray();
+                _combinedDataArray = _combinedDataArray.OrderBy(data => data.Key).ToArray();
+
                 if (_combinedDataArray.SequenceEqual(combinedDataArray))
                     Debug.Log("Sorting Success");
                 else
@@ -268,6 +271,7 @@ public class SortSample : MonoBehaviour
             UI.Field("Use Command Buffer", () => _useCommandBuffer),
             UI.Space().SetHeight(10f),
             UI.Field("Dispatch Only Copy Kernel", () => _dispatchOnlyCopyKernel),
+            UI.FieldReadOnly("Running Kernels", () => RunningKernels),
             UI.Space().SetHeight(10f),
             UI.Button("Reinit", Init)
         ).SetClosable(false);
