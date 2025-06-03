@@ -37,6 +37,7 @@ namespace Onesweep
         private static int ScanLocalKernelDispatchGroupSize => RadixBase;
         private static int ScanGlobalKernelDispatchGroupSize => 1;
         private static int SortKernelDispatchGroupSize(int sortCount) => (sortCount + SortKernelItemsPerGroup - 1) / SortKernelItemsPerGroup;
+        private static int RoundUpToMultipleOf32(int value) => (value + 31) / 32 * 32;
         #endregion
 
         #region Shader Property IDs
@@ -44,6 +45,7 @@ namespace Onesweep
         private static readonly int GroupCountID = Shader.PropertyToID("group_count");
         private static readonly int BucketCountBufferID = Shader.PropertyToID("bucket_count_buffer");
         private static readonly int ScannedBucketCountBufferID = Shader.PropertyToID("scanned_bucket_count_buffer");
+        private static readonly int ScannedBucketCountBufferGroupCountID = Shader.PropertyToID("scanned_bucket_count_buffer_group_count");
         private static readonly int TotalBucketCountBufferID = Shader.PropertyToID("total_bucket_count_buffer");
         private static readonly int ScannedTotalBucketCountBufferID = Shader.PropertyToID("scanned_total_bucket_count_buffer");
         private static readonly int KeyInBufferID = Shader.PropertyToID("key_in_buffer");
@@ -88,6 +90,7 @@ namespace Onesweep
         // Stores the scanned per-group offsets, used to calculate local positions within each bucket.
         // size: RadixBase * group_count
         private GraphicsBuffer _scannedBucketCountBuffer;
+        private int _scannedBucketCountBufferGroupCount;
         // Stores the total count of items for each bucket across all thread groups.
         // size: RadixBase
         private GraphicsBuffer _totalBucketCountBuffer;
@@ -204,12 +207,13 @@ namespace Onesweep
                 _bucketCountBuffer = null;
             }
             _bucketCountBuffer ??= new GraphicsBuffer(GraphicsBuffer.Target.Structured, RadixBase * sortKernelMaxDispatchGroupCount, sizeof(uint));
-            if (_scannedBucketCountBuffer is not null && _scannedBucketCountBuffer.count < RadixBase * sortKernelMaxDispatchGroupCount)
+            _scannedBucketCountBufferGroupCount = RoundUpToMultipleOf32(SortKernelDispatchGroupSize(MaxSortCount));
+            if (_scannedBucketCountBuffer is not null && _scannedBucketCountBuffer.count < RadixBase * _scannedBucketCountBufferGroupCount)
             {
                 _scannedBucketCountBuffer.Release();
                 _scannedBucketCountBuffer = null;
             }
-            _scannedBucketCountBuffer ??= new GraphicsBuffer(GraphicsBuffer.Target.Structured, RadixBase * sortKernelMaxDispatchGroupCount, sizeof(uint));
+            _scannedBucketCountBuffer ??= new GraphicsBuffer(GraphicsBuffer.Target.Structured, RadixBase * _scannedBucketCountBufferGroupCount, sizeof(uint));
             _totalBucketCountBuffer ??= new GraphicsBuffer(GraphicsBuffer.Target.Structured, RadixBase, sizeof(uint));
             _scannedTotalBucketCountBuffer ??= new GraphicsBuffer(GraphicsBuffer.Target.Structured, RadixBase, sizeof(uint));
 
@@ -272,12 +276,16 @@ namespace Onesweep
 
             _scanLocalCs.SetBuffer(_scanLocalKernel, BucketCountBufferID, _bucketCountBuffer);
             _scanLocalCs.SetBuffer(_scanLocalKernel, ScannedBucketCountBufferID, _scannedBucketCountBuffer);
+            _scanLocalCs.SetInt(ScannedBucketCountBufferGroupCountID, _scannedBucketCountBufferGroupCount);
             _scanLocalCs.SetBuffer(_scanLocalKernel, TotalBucketCountBufferID, _totalBucketCountBuffer);
+
             _scanGlobalCs.SetBuffer(_scanGlobalKernel, TotalBucketCountBufferID, _totalBucketCountBuffer);
             _scanGlobalCs.SetBuffer(_scanGlobalKernel, ScannedTotalBucketCountBufferID, _scannedTotalBucketCountBuffer);
 
             _sortCs.SetBuffer(_sortKernel, ScannedBucketCountBufferID, _scannedBucketCountBuffer);
+            _sortCs.SetInt(ScannedBucketCountBufferGroupCountID, _scannedBucketCountBufferGroupCount);
             _sortCs.SetBuffer(_sortKernel, ScannedTotalBucketCountBufferID, _scannedTotalBucketCountBuffer);
+
 
             bool usePayload = SortMode == SortMode.KeyPayload;
 
@@ -353,12 +361,14 @@ namespace Onesweep
 
             cmd.SetComputeBufferParam(_scanLocalCs, _scanLocalKernel, BucketCountBufferID, _bucketCountBuffer);
             cmd.SetComputeBufferParam(_scanLocalCs, _scanLocalKernel, ScannedBucketCountBufferID, _scannedBucketCountBuffer);
+            cmd.SetComputeIntParam(_scanLocalCs, ScannedBucketCountBufferGroupCountID, _scannedBucketCountBufferGroupCount);
             cmd.SetComputeBufferParam(_scanLocalCs, _scanLocalKernel, TotalBucketCountBufferID, _totalBucketCountBuffer);
 
             cmd.SetComputeBufferParam(_scanGlobalCs, _scanGlobalKernel, TotalBucketCountBufferID, _totalBucketCountBuffer);
             cmd.SetComputeBufferParam(_scanGlobalCs, _scanGlobalKernel, ScannedTotalBucketCountBufferID, _scannedTotalBucketCountBuffer);
 
             cmd.SetComputeBufferParam(_sortCs, _sortKernel, ScannedBucketCountBufferID, _scannedBucketCountBuffer);
+            cmd.SetComputeIntParam(_sortCs, ScannedBucketCountBufferGroupCountID, _scannedBucketCountBufferGroupCount);
             cmd.SetComputeBufferParam(_sortCs, _sortKernel, ScannedTotalBucketCountBufferID, _scannedTotalBucketCountBuffer);
 
             bool usePayload = SortMode == SortMode.KeyPayload;
@@ -442,12 +452,14 @@ namespace Onesweep
 
             _scanLocalCs.SetBuffer(_scanLocalKernel, BucketCountBufferID, _bucketCountBuffer);
             _scanLocalCs.SetBuffer(_scanLocalKernel, ScannedBucketCountBufferID, _scannedBucketCountBuffer);
+            _scanLocalCs.SetInt(ScannedBucketCountBufferGroupCountID, _scannedBucketCountBufferGroupCount);
             _scanLocalCs.SetBuffer(_scanLocalKernel, TotalBucketCountBufferID, _totalBucketCountBuffer);
 
             _scanGlobalCs.SetBuffer(_scanGlobalKernel, TotalBucketCountBufferID, _totalBucketCountBuffer);
             _scanGlobalCs.SetBuffer(_scanGlobalKernel, ScannedTotalBucketCountBufferID, _scannedTotalBucketCountBuffer);
 
             _sortCs.SetBuffer(_sortKernel, ScannedBucketCountBufferID, _scannedBucketCountBuffer);
+            _sortCs.SetInt(ScannedBucketCountBufferGroupCountID, _scannedBucketCountBufferGroupCount);
             _sortCs.SetBuffer(_sortKernel, ScannedTotalBucketCountBufferID, _scannedTotalBucketCountBuffer);
 
             bool usePayload = SortMode == SortMode.KeyPayload;
@@ -533,12 +545,14 @@ namespace Onesweep
 
             cmd.SetComputeBufferParam(_scanLocalCs, _scanLocalKernel, BucketCountBufferID, _bucketCountBuffer);
             cmd.SetComputeBufferParam(_scanLocalCs, _scanLocalKernel, ScannedBucketCountBufferID, _scannedBucketCountBuffer);
+            cmd.SetComputeIntParam(_scanLocalCs, ScannedBucketCountBufferGroupCountID, _scannedBucketCountBufferGroupCount);
             cmd.SetComputeBufferParam(_scanLocalCs, _scanLocalKernel, TotalBucketCountBufferID, _totalBucketCountBuffer);
 
             cmd.SetComputeBufferParam(_scanGlobalCs, _scanGlobalKernel, TotalBucketCountBufferID, _totalBucketCountBuffer);
             cmd.SetComputeBufferParam(_scanGlobalCs, _scanGlobalKernel, ScannedTotalBucketCountBufferID, _scannedTotalBucketCountBuffer);
 
             cmd.SetComputeBufferParam(_sortCs, _sortKernel, ScannedBucketCountBufferID, _scannedBucketCountBuffer);
+            cmd.SetComputeIntParam(_sortCs, ScannedBucketCountBufferGroupCountID, _scannedBucketCountBufferGroupCount);
             cmd.SetComputeBufferParam(_sortCs, _sortKernel, ScannedTotalBucketCountBufferID, _scannedTotalBucketCountBuffer);
 
             bool usePayload = SortMode == SortMode.KeyPayload;

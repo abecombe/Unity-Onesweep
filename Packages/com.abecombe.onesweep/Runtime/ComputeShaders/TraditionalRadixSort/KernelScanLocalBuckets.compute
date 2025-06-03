@@ -14,6 +14,7 @@
 #include "../RadixCommon/Radix.hlsl"
 #include "../Common/Wave.hlsl"
 #include "../RadixCommon/DispatchUtils.hlsl"
+#include "Utils.hlsl"
 
 #define THREADS_PER_GROUP 128
 
@@ -51,7 +52,7 @@ void ScanLocalBuckets(uint group_thread_id : SV_GroupThreadID, uint bucket_id : 
 
     for (group_id = group_thread_id; group_id < loop_group_count; group_id += THREADS_PER_GROUP)
     {
-        const uint bucket_count = bucket_count_buffer[group_id * RADIX_BASE + bucket_id];
+        const uint bucket_count = bucket_count_buffer[get_bucket_count_buffer_address(bucket_id, group_id, RADIX_BASE)];
 
         uint scanned_bucket_count = bucket_count + WavePrefixSum(bucket_count); // inclusive scan
         // ((LANE_INDEX + 1u) & WAVE_SIZE_MASK) + (group_thread_id & ~WAVE_SIZE_MASK) means
@@ -69,7 +70,7 @@ void ScanLocalBuckets(uint group_thread_id : SV_GroupThreadID, uint bucket_id : 
         if (LANE_INDEX != 0u && group_thread_id >= WAVE_SIZE)
             scanned_bucket_count += group_shared[WAVE_INDEX(group_thread_id) * WAVE_SIZE];
 
-        scanned_bucket_count_buffer[bucket_id * group_count + group_id] = scanned_bucket_count + reduction;
+        scanned_bucket_count_buffer[get_scanned_bucket_count_buffer_address(bucket_id, group_id)] = scanned_bucket_count + reduction;
 
         if (group_thread_id == THREADS_PER_GROUP - 1)
         {
@@ -86,7 +87,7 @@ void ScanLocalBuckets(uint group_thread_id : SV_GroupThreadID, uint bucket_id : 
     {
         uint bucket_count = 0;
         if (group_id < group_count)
-            bucket_count = bucket_count_buffer[group_id * RADIX_BASE + bucket_id];
+            bucket_count = bucket_count_buffer[get_bucket_count_buffer_address(bucket_id, group_id, RADIX_BASE)];
 
         uint scanned_bucket_count = bucket_count + WavePrefixSum(bucket_count); // inclusive scan
         // ((LANE_INDEX + 1u) & WAVE_SIZE_MASK) + (group_thread_id & ~WAVE_SIZE_MASK) means
@@ -106,7 +107,7 @@ void ScanLocalBuckets(uint group_thread_id : SV_GroupThreadID, uint bucket_id : 
             if (LANE_INDEX != 0u && group_thread_id >= WAVE_SIZE)
                 scanned_bucket_count += group_shared[WAVE_INDEX(group_thread_id) * WAVE_SIZE];
 
-            scanned_bucket_count_buffer[bucket_id * group_count + group_id] = scanned_bucket_count + reduction;
+            scanned_bucket_count_buffer[get_scanned_bucket_count_buffer_address(bucket_id, group_id)] = scanned_bucket_count + reduction;
 
             if (group_id == group_count - 1)
             {

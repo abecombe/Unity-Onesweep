@@ -16,6 +16,7 @@
 
 #include "../RadixCommon/RadixMain.hlsl"
 #include "../RadixCommon/DispatchUtils.hlsl"
+#include "Utils.hlsl"
 
 StructuredBuffer<uint> scanned_bucket_count_buffer; // size: RADIX_BASE * group_count
 StructuredBuffer<uint> scanned_total_bucket_count_buffer; // size: RADIX_BASE
@@ -23,11 +24,11 @@ StructuredBuffer<uint> scanned_total_bucket_count_buffer; // size: RADIX_BASE
 /**
  * \brief Calculates and stores this group's base scatter offset for a given bucket into shared memory.
  */
-inline void LoadScannedBucketCount(uint bucket_id, uint group_id, uint group_count)
+inline void LoadScannedBucketCount(uint bucket_id, uint group_id)
 {
     // subtract the first index of bucket_id in the group
     // to make it easier to calculate the final destination of individual data
-    group_shared[bucket_id] = scanned_total_bucket_count_buffer[bucket_id] + scanned_bucket_count_buffer[bucket_id * group_count + group_id] - group_shared[bucket_id];
+    group_shared[bucket_id] = scanned_total_bucket_count_buffer[bucket_id] + scanned_bucket_count_buffer[get_scanned_bucket_count_buffer_address(bucket_id, group_id)] - group_shared[bucket_id];
 }
 
 /**
@@ -71,7 +72,7 @@ void Sort(uint group_id : SV_GroupID, uint group_thread_id : SV_GroupThreadID)
 
     SortKeysInGroup(offsets, keys);
 
-    LoadScannedBucketCount(group_thread_id, group_id, group_count);
+    LoadScannedBucketCount(group_thread_id, group_id);
     GroupMemoryBarrierWithGroupSync();
 
 #if defined(KEY_ONLY)

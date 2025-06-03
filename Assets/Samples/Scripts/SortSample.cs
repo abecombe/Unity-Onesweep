@@ -32,6 +32,7 @@ public class SortSample : MonoBehaviour
     private string RunningKernels => _dispatchOnlyCopyKernel ? "Copy" : "Copy & Sort";
 
     private ISorter _sorter;
+    private bool _successfllyInitialized = false;
 
     private GraphicsBuffer _keyBuffer;
     private GraphicsBuffer _payloadBuffer;
@@ -86,6 +87,8 @@ public class SortSample : MonoBehaviour
 
     private void Update()
     {
+        if (!_successfllyInitialized) return;
+
         if (_useCommandBuffer) _commandBuffer.Clear();
         DispatchCopyKernel();
         if (!_dispatchOnlyCopyKernel) DispatchSortKernel();
@@ -110,6 +113,8 @@ public class SortSample : MonoBehaviour
 
     public void Init()
     {
+        _successfllyInitialized = false;
+
         _currentSortingAlgorithm = _sortingAlgorithm;
         _currentSortMode = _sortMode;
         _currentDispatchMode = _dispatchMode;
@@ -124,7 +129,15 @@ public class SortSample : MonoBehaviour
             _ => throw new ArgumentOutOfRangeException(nameof(_currentSortingAlgorithm), _currentSortingAlgorithm, null)
         };
 
-        _sorter.Init(_config, _currentNumData, _currentSortMode, KeyType.UInt, SortingOrder.Ascending, _currentDispatchMode, WaveSize.Unknown);
+        try
+        {
+            _sorter.Init(_config, _currentNumData, _currentSortMode, KeyType.UInt, SortingOrder.Ascending, _currentDispatchMode, WaveSize.Unknown);
+        }
+        catch (Exception e)
+        {
+            Debug.LogError($"Failed to initialize sorter: {e.Message}");
+            return;
+        }
 
         _keyBuffer = new GraphicsBuffer(GraphicsBuffer.Target.Structured, _currentNumData, sizeof(type));
         _payloadBuffer = new GraphicsBuffer(GraphicsBuffer.Target.Structured, _currentNumData, sizeof(uint));
@@ -151,6 +164,8 @@ public class SortSample : MonoBehaviour
 
         _copyCs = Resources.Load<ComputeShader>("Copy");
         _copyKernel = _copyCs.FindKernel("CopySortBuffer");
+
+        _successfllyInitialized = true;
     }
 
     private void DispatchCopyKernel()
@@ -210,6 +225,12 @@ public class SortSample : MonoBehaviour
     public void CheckSuccess()
     {
         Init();
+
+        if (!_successfllyInitialized)
+        {
+            Debug.LogError("Sorter initialization failed. Cannot check success.");
+            return;
+        }
 
         if (_useCommandBuffer) _commandBuffer.Clear();
         DispatchCopyKernel();

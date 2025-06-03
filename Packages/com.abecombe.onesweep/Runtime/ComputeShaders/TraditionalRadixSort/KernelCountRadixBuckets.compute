@@ -6,6 +6,7 @@
 
 #include "../RadixCommon/Radix.hlsl"
 #include "../RadixCommon/DispatchUtils.hlsl"
+#include "Utils.hlsl"
 
 #define THREADS_PER_GROUP (128u)
 #define ITEMS_PER_GROUP (RADIX_BASE * 15u) // should be equal to ITEMS_PER_GROUP of KernelSort.compute
@@ -60,6 +61,6 @@ void CountRadixBuckets(uint group_thread_id : SV_GroupThreadID, uint group_id : 
     [unroll(RADIX_BASE / THREADS_PER_GROUP)]
     for (uint k = group_thread_id; k < RADIX_BASE; k += THREADS_PER_GROUP)
     {
-        bucket_count_buffer[group_id * RADIX_BASE + k] = group_shared[k] + group_shared[k + RADIX_BASE];
+        bucket_count_buffer[get_bucket_count_buffer_address(k, group_id, RADIX_BASE)] = group_shared[k] + group_shared[k + RADIX_BASE];
     }
 }
