@@ -29,7 +29,7 @@ namespace Onesweep
         /// <summary>
         /// Sorts only the key buffer. The payload buffer is ignored and can be null.
         /// </summary>
-        KeyOnly,
+        KeyOnly = 0,
         /// <summary>
         /// Sorts the key buffer and an accompanying payload buffer.
         /// The payload buffer must be provided.

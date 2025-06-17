@@ -565,8 +565,8 @@ namespace Onesweep
                 cmd.SetComputeBufferParam(_sortCs, _sortKernel, KeyOutBufferID, currentKeyOut);
                 if (usePayload)
                 {
-                    GraphicsBuffer currentPayloadIn = i % 2 == 0 ? payloadBuffer : _tempPayloadBuffer;
-                    GraphicsBuffer currentPayloadOut = i % 2 == 0 ? _tempPayloadBuffer : payloadBuffer;
+                    var currentPayloadIn = i % 2 == 0 ? payloadBuffer : _tempPayloadBuffer;
+                    var currentPayloadOut = i % 2 == 0 ? _tempPayloadBuffer : payloadBuffer;
                     cmd.SetComputeBufferParam(_sortCs, _sortKernel, PayloadInBufferID, currentPayloadIn);
                     cmd.SetComputeBufferParam(_sortCs, _sortKernel, PayloadOutBufferID, currentPayloadOut);
                 }
