@@ -18,7 +18,7 @@
 #include "../RadixCommon/DispatchUtils.hlsl"
 #include "PartitionDescriptor.hlsl"
 
-globallycoherent RWStructuredBuffer<uint> partition_index_buffer; // size: RADIX_STEP_COUNT
+RWStructuredBuffer<uint> partition_index_buffer; // size: RADIX_STEP_COUNT
 globallycoherent RWStructuredBuffer<PARTITION_DESCRIPTOR> partition_descriptor_buffer; // size: RADIX_BASE * group_count * RADIX_STEP_COUNT
 
 /**

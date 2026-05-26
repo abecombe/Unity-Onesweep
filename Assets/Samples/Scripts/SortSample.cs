@@ -22,7 +22,6 @@ public class SortSample : MonoBehaviour
     [SerializeField] private SortMode _sortMode = SortMode.KeyPayload;
     [SerializeField] private DispatchMode _dispatchMode = DispatchMode.Direct;
     [SerializeField] private bool _useCommandBuffer = false;
-    [SerializeField] private OnesweepComputeConfig _config;
     [SerializeField] private bool _dispatchOnlyCopyKernel = false;
 
     private SortingAlgorithm _currentSortingAlgorithm;
@@ -131,7 +130,7 @@ public class SortSample : MonoBehaviour
 
         try
         {
-            _sorter.Init(_config, _currentNumData, _currentSortMode, KeyType.UInt, SortingOrder.Ascending, _currentDispatchMode, WaveSize.Unknown);
+            _sorter.Init(_currentNumData, _currentSortMode, KeyType.UInt, SortingOrder.Ascending, _currentDispatchMode, WaveSize.Unknown);
         }
         catch (Exception e)
         {

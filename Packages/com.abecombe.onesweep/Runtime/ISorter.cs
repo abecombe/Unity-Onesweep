@@ -52,7 +52,6 @@ namespace Onesweep
         /// <summary>
         /// Initializes the sorter with specified configurations.
         /// </summary>
-        /// <param name="onesweepComputeConfig">Compute shader configuration asset.</param>
         /// <param name="maxSortCount">Maximum number of elements this sorter instance can handle.</param>
         /// <param name="sortMode">Specifies whether to sort keys only, or keys with an accompanying payload.</param>
         /// <param name="keyType">Data type of the keys to sort (UInt, Int, Float).</param>
@@ -61,7 +60,7 @@ namespace Onesweep
         /// <param name="waveSize">GPU wave size for shader execution.</param>
         /// <param name="forceClearBuffers">Whether to force clear existing internal buffers upon initialization.</param>
         /// <returns>The sorter instance for chaining or IDisposable usage.</returns>
-        IDisposable Init(OnesweepComputeConfig onesweepComputeConfig, int maxSortCount, SortMode sortMode, KeyType keyType, SortingOrder sortingOrder, DispatchMode dispatchMode, WaveSize waveSize, bool forceClearBuffers = false);
+        IDisposable Init(int maxSortCount, SortMode sortMode, KeyType keyType, SortingOrder sortingOrder, DispatchMode dispatchMode, WaveSize waveSize, bool forceClearBuffers = false);
 
         /// <summary>
         /// Sorts the key buffer. If SortMode is SortMode.KeyPayload, the payloadBuffer is also sorted.

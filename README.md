@@ -69,12 +69,6 @@ using UnityEngine;
 
 public class MySorterBehaviour : MonoBehaviour
 {
-    // Assign this from the Inspector.
-    // The asset is included in the package at:
-    // "Packages/Onesweep/Runtime/OnesweepComputeConfig.asset"
-    // This config is used by both sorter types.
-    [SerializeField] private OnesweepComputeConfig config;
-
     ISorter sorter;
 
     void Start()
@@ -86,7 +80,6 @@ public class MySorterBehaviour : MonoBehaviour
 
         // Initialize the sorter, specifying the SortMode
         sorter.Init(
-            config,
             maxSortCount: 65536,
             sortMode: SortMode.KeyPayload,        // Choose SortMode.KeyOnly or SortMode.KeyPayload
             keyType: KeyType.UInt,                // Choose KeyType.UInt, KeyType.Int, or KeyType.Float
