@@ -12,7 +12,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: eb5ce53a3839f654fad89f70deab5623, type: 3}
   m_Name: OnesweepComputeConfig
   m_EditorClassIdentifier: 
-  WaveSizeCs: {fileID: 7200000, guid: 63a9acc6a08a41199583af51b393e2dd, type: 3}
   OnesweepPrecomputeCs: {fileID: 7200000, guid: 32c2fd8e4133452cb120e1010ce3e446, type: 3}
   OnesweepInitCs: {fileID: 7200000, guid: db6ad49b80fd4793b852450035c222a2, type: 3}
   OnesweepCountCs: {fileID: 7200000, guid: 427999ada1784b64a555da8fd6d50081, type: 3}

@@ -90,67 +90,12 @@ namespace Onesweep
         Indirect
     }
 
-    /// <summary>
-    /// Specifies the GPU wave size (number of threads in a hardware execution unit) to be used or targeted.
-    /// </summary>
-    public enum WaveSize
-    {
-        /// <summary>
-        /// Target or configure for a wave size of 32 lanes. Typically used by NVIDIA GPUs.
-        /// </summary>
-        WaveSize32 = 32,
-        /// <summary>
-        /// Target or configure for a wave size of 64 lanes. Typically used by AMD GPUs.
-        /// </summary>
-        WaveSize64 = 64,
-        /// <summary>
-        /// Attempt to auto-detect the optimal.
-        /// </summary>
-        Unknown = 0
-    }
-
     internal static class SorterCommon
     {
-        private static readonly int WaveSizeBufferID = Shader.PropertyToID("wave_size_buffer");
-
-        public static WaveSize StoredWaveSize { get; private set; } = WaveSize.Unknown; // for storing the wave size of the device
-
-        /// <summary>
-        /// Gets and Stores the wave size from the compute shader.
-        /// </summary>
-        /// <param name="onesweepComputeConfig">
-        /// Compute shader configuration for Onesweep.
-        /// </param>
-        /// <param name="waveSize">Outputs the detected wave size.</param>
-        /// <returns>
-        /// Returns the wave size (32 or 64). If the size is something else, returns WaveSize.Unknown.
-        /// </returns>
-        public static WaveSize GetStoreWaveSize(OnesweepComputeConfig onesweepComputeConfig, out uint waveSize)
-        {
-            var waveSizeCs = onesweepComputeConfig.WaveSizeCs;
-            var waveSizeKernel = waveSizeCs.FindKernel("GetWaveSize");
-            var waveSizeBuffer = new GraphicsBuffer(GraphicsBuffer.Target.Structured, 1, sizeof(uint));
-            waveSizeCs.SetBuffer(waveSizeKernel, WaveSizeBufferID, waveSizeBuffer);
-            waveSizeCs.Dispatch(waveSizeKernel, 1, 1, 1);
-            uint[] waveSizeData = new uint[1];
-            waveSizeBuffer.GetData(waveSizeData);
-            waveSizeBuffer.Release();
-            waveSize = waveSizeData[0];
-
-            StoredWaveSize = waveSizeData[0] switch
-            {
-                32 => WaveSize.WaveSize32,
-                64 => WaveSize.WaveSize64,
-                _ => WaveSize.Unknown
-            };
-
-            return StoredWaveSize;
-        }
-
         /// <summary>
         /// Sets the shader keywords for the compute shader based on the provided parameters.
         /// </summary>
-        public static void SetShaderKeywords(ComputeShader cs, SortMode sortMode, KeyType keyType, SortingOrder sortingOrder, DispatchMode dispatchMode, WaveSize waveSize)
+        public static void SetShaderKeywords(ComputeShader cs, SortMode sortMode, KeyType keyType, SortingOrder sortingOrder, DispatchMode dispatchMode)
         {
             switch (sortMode)
             {
@@ -210,20 +155,6 @@ namespace Onesweep
                     break;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(dispatchMode), dispatchMode, null);
-            }
-            switch (waveSize)
-            {
-                case WaveSize.WaveSize32:
-                    cs.EnableKeyword("WAVE_SIZE_32");
-                    cs.DisableKeyword("WAVE_SIZE_64");
-                    break;
-                case WaveSize.WaveSize64:
-                    cs.DisableKeyword("WAVE_SIZE_32");
-                    cs.EnableKeyword("WAVE_SIZE_64");
-                    break;
-                case WaveSize.Unknown:
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(waveSize), waveSize, null);
             }
         }
 

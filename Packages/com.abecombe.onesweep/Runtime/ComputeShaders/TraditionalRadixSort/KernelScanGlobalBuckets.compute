@@ -3,7 +3,6 @@
 #pragma use_dxc
 #pragma require wavebasic
 #pragma require waveballot
-#pragma multi_compile WAVE_SIZE_32 WAVE_SIZE_64
 
 #include "../RadixCommon/Radix.hlsl"
 #include "../Common/Wave.hlsl"

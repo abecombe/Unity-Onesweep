@@ -43,7 +43,6 @@ It is recommended as a robust alternative if you encounter issues with the Onesw
 * Direct and indirect dispatch modes.
 * Works with Unity's `GraphicsBuffer` for input/output data.
 * Can be dispatched via `CommandBuffer` for integration into rendering pipelines.
-* Wave size customization (32 or 64).
 
 ## 🚀 Requirements
 
@@ -84,8 +83,7 @@ public class MySorterBehaviour : MonoBehaviour
             sortMode: SortMode.KeyPayload,        // Choose SortMode.KeyOnly or SortMode.KeyPayload
             keyType: KeyType.UInt,                // Choose KeyType.UInt, KeyType.Int, or KeyType.Float
             sortingOrder: SortingOrder.Ascending, // Choose SortingOrder.Ascending or SortingOrder.Descending
-            dispatchMode: DispatchMode.Direct   , // Choose DispatchMode.Direct or DispatchMode.Indirect
-            waveSize: WaveSize.Unknown            // Attempts to auto-detect, or set explicitly e.g., WaveSize.WaveSize32 or WaveSize.WaveSize64
+            dispatchMode: DispatchMode.Direct     // Choose DispatchMode.Direct or DispatchMode.Indirect
         );
     }
 
@@ -106,25 +104,6 @@ public class MySorterBehaviour : MonoBehaviour
     }
 }
 ```
-
-## ⚙️ Configuration Notes
-
-**Wave Size Consistency:**
-The `WaveSize` (e.g., WaveSize32 or WaveSize64) for sorter operations is established when `sorter.Init()` is called.
-* If an explicit `WaveSize` (e.g., `WaveSize.WaveSize32` or `WaveSize.WaveSize64`) is provided to `Init()`, that specific sorter instance will be configured to use the specified size.
-* If `WaveSize.Unknown` is specified:
-    * Upon the **very first `Init()` call with `WaveSize.Unknown` across all sorter instances** within the application's session, the system attempts to auto-detect a compatible wave size based on the current GPU.
-    * This initially auto-detected wave size is then **cached globally**.
-    * All **subsequent sorter instances that are also initialized with `WaveSize.Unknown` will reuse this cached, globally determined wave size**.
-      Once configured (either explicitly or via the shared auto-detection mechanism), an instance uses its determined wave size for all subsequent operations, typically by selecting appropriate shader variants.
-
-**Due to this caching mechanism for auto-detected wave sizes, the sorting system inherently assumes that the active GPU's wave size capability remains stable throughout the application session after the first auto-detection occurs (when `WaveSize.Unknown` is first used). The system is not designed to handle dynamic changes to the GPU's effective wave size mid-session without a re-evaluation of this cached value (e.g., via an application restart or a specific reset mechanism not currently exposed).**
-
-It is crucial that the GPU consistently supports the wave size established for any sorter instance. Attempting to run a sorter with a wave size configuration that is incompatible with the current runtime GPU environment can lead to undefined behavior, incorrect sorting results, errors, and in the worst case, can cause processing to fail entirely. Such incompatibilities can arise if:
-* An explicit, unsupported `WaveSize` is forced (e.g., WaveSize64 on a GPU that only effectively supports WaveSize32 for the deployed shaders).
-* The active rendering device changes capabilities during the application's runtime (e.g., **switching from a dedicated GPU (dGPU) to an integrated GPU (iGPU) on a laptop, or vice-versa**) *after* an initial wave size has been auto-detected and cached, leading to a mismatch if new instances using `WaveSize.Unknown` are initialized or existing instances continue to operate based on the cached value.
-
-Always ensure that the `WaveSize` configuration is appropriate for the target hardware and remains compatible with the active rendering device throughout the sorter's usage. If the GPU or its capabilities are expected to change significantly, the application may need to manage the sorter's lifecycle and re-initialization more carefully with explicit `WaveSize` values appropriate for the new environment.
 
 ## 📄 License
 

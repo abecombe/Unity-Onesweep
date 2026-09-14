@@ -40,11 +40,6 @@ namespace Onesweep
         DispatchMode DispatchMode { get; }
 
         /// <summary>
-        /// Gets the GPU wave size used for sorting.
-        /// </summary>
-        WaveSize WaveSize { get; }
-
-        /// <summary>
         /// Gets the maximum number of elements this sorter instance can handle.
         /// </summary>
         int MaxSortCount { get; }
@@ -57,10 +52,9 @@ namespace Onesweep
         /// <param name="keyType">Data type of the keys to sort (UInt, Int, Float).</param>
         /// <param name="sortingOrder">Order of sorting (ascending/descending).</param>
         /// <param name="dispatchMode">Dispatch mode (Direct, Indirect) for compute shaders. If you pass the sort count using GraphicsBuffer, you should use Indirect.</param>
-        /// <param name="waveSize">GPU wave size for shader execution.</param>
         /// <param name="forceClearBuffers">Whether to force clear existing internal buffers upon initialization.</param>
         /// <returns>The sorter instance for chaining or IDisposable usage.</returns>
-        IDisposable Init(int maxSortCount, SortMode sortMode, KeyType keyType, SortingOrder sortingOrder, DispatchMode dispatchMode, WaveSize waveSize, bool forceClearBuffers = false);
+        IDisposable Init(int maxSortCount, SortMode sortMode, KeyType keyType, SortingOrder sortingOrder, DispatchMode dispatchMode, bool forceClearBuffers = false);
 
         /// <summary>
         /// Sorts the key buffer. If SortMode is SortMode.KeyPayload, the payloadBuffer is also sorted.

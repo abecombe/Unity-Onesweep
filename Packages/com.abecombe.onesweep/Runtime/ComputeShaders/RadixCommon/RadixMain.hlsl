@@ -9,7 +9,6 @@
 //#pragma use_dxc
 //#pragma require wavebasic
 //#pragma require waveballot
-//#pragma multi_compile WAVE_SIZE_32 WAVE_SIZE_64
 //#pragma multi_compile KEY_TYPE_UINT KEY_TYPE_INT KEY_TYPE_FLOAT
 //#pragma multi_compile SORTING_ORDER_ASCENDING SORTING_ORDER_DESCENDING
 //#pragma multi_compile KEY_ONLY KEY_PAYLOAD

@@ -11,9 +11,6 @@ namespace Onesweep
     [CreateAssetMenu(fileName = "OnesweepComputeConfig", menuName = "Onesweep/ComputeConfig")]
     public class OnesweepComputeConfig : ScriptableObject
     {
-        [Header("Common Compute Shaders")]
-        public ComputeShader WaveSizeCs;
-
         [Header("Onesweep Sorter Compute Shaders")]
         public ComputeShader OnesweepPrecomputeCs;
         public ComputeShader OnesweepInitCs;

@@ -130,7 +130,7 @@ public class SortSample : MonoBehaviour
 
         try
         {
-            _sorter.Init(_currentNumData, _currentSortMode, KeyType.UInt, SortingOrder.Ascending, _currentDispatchMode, WaveSize.Unknown);
+            _sorter.Init(_currentNumData, _currentSortMode, KeyType.UInt, SortingOrder.Ascending, _currentDispatchMode);
         }
         catch (Exception e)
         {

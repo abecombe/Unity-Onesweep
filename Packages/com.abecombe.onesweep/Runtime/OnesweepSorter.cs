@@ -127,7 +127,6 @@ namespace Onesweep
         public KeyType KeyType { get; private set; }
         public SortingOrder SortingOrder { get; private set; }
         public DispatchMode DispatchMode { get; private set; }
-        public WaveSize WaveSize { get; private set; }
         public int MaxSortCount { get; private set; }
 
         private static bool _hasDisplayedOnesweepWarning = false;
@@ -140,10 +139,9 @@ namespace Onesweep
         /// <param name="keyType">Data type of the keys to sort (UInt, Int, Float).</param>
         /// <param name="sortingOrder">Order of sorting (ascending/descending).</param>
         /// <param name="dispatchMode">Dispatch mode (Direct, Indirect) for compute shaders. If you pass the sort count using GraphicsBuffer, you should use Indirect.</param>
-        /// <param name="waveSize">GPU wave size for shader execution.</param>
         /// <param name="forceClearBuffers">Whether to force clear existing internal buffers upon initialization.</param>
         /// <returns>The sorter instance for chaining or IDisposable usage.</returns>
-        public IDisposable Init(int maxSortCount, SortMode sortMode, KeyType keyType, SortingOrder sortingOrder, DispatchMode dispatchMode, WaveSize waveSize, bool forceClearBuffers = false)
+        public IDisposable Init(int maxSortCount, SortMode sortMode, KeyType keyType, SortingOrder sortingOrder, DispatchMode dispatchMode, bool forceClearBuffers = false)
         {
             Inited = false;
 
@@ -172,24 +170,6 @@ namespace Onesweep
             KeyType = keyType;
             SortingOrder = sortingOrder;
             DispatchMode = dispatchMode;
-
-            if (SorterCommon.StoredWaveSize != WaveSize.Unknown && waveSize != WaveSize.Unknown && SorterCommon.StoredWaveSize != waveSize)
-                Debug.LogWarning($"This device wave size is {SorterCommon.StoredWaveSize}. Requested {waveSize} is different.");
-            if (waveSize != WaveSize.Unknown)
-            {
-                WaveSize = waveSize;
-            }
-            else if (SorterCommon.StoredWaveSize != WaveSize.Unknown)
-            {
-                WaveSize = SorterCommon.StoredWaveSize;
-            }
-            else
-            {
-                SorterCommon.GetStoreWaveSize(onesweepComputeConfig, out var waveSizeUInt);
-                if (SorterCommon.StoredWaveSize == WaveSize.Unknown)
-                    throw new NotSupportedException($"Could not determine a supported wave size (32 or 64) for this device. Detected: {waveSizeUInt}.");
-                WaveSize = SorterCommon.StoredWaveSize;
-            }
 
             MaxSortCount = Mathf.Max(maxSortCount, 1);
             if (MaxSortCount > SortKernelItemsPerGroup * MaxDispatchSize)
@@ -246,7 +226,7 @@ namespace Onesweep
 
             foreach (var cs in _computeShaders)
             {
-                SorterCommon.SetShaderKeywords(cs, SortMode, KeyType, SortingOrder, DispatchMode, WaveSize);
+                SorterCommon.SetShaderKeywords(cs, SortMode, KeyType, SortingOrder, DispatchMode);
             }
 
             Inited = true;
