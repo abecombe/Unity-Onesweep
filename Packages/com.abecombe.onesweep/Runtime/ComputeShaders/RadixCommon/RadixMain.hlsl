@@ -134,14 +134,43 @@ inline void ComputePrefixTotalBitCountInWave(in WAVE_MASK_TYPE bit_mask, out uin
  */
 inline ItemsArray16bit ComputeWaveLevelLocalOffsets(in uint group_thread_id, in ItemsArray keys)
 {
-    // Initialize group_shared memory
-    [unroll(RADIX_BASE / WAVE_SIZE)]
-    for (uint i = LANE_INDEX + WAVE_INDEX(group_thread_id) * RADIX_BASE; i < (WAVE_INDEX(group_thread_id) + 1u) * RADIX_BASE; i += WAVE_SIZE)
+    ItemsArray16bit offsets;
+
+    if (WAVE_SIZE == 8u)
     {
-        group_shared[i] = 0u;
+        group_shared[group_thread_id] = 0u;
+        GroupMemoryBarrierWithGroupSync();
+
+        [unroll(THREADS_PER_GROUP / 8u)]
+        for (uint wave_index = 0u; wave_index < THREADS_PER_GROUP / 8u; wave_index++)
+        {
+            if (WAVE_INDEX(group_thread_id) == wave_index)
+            {
+                [unroll(ITEMS_PER_THREAD)]
+                for (uint i = 0u; i < ITEMS_PER_THREAD; i++)
+                {
+                    const uint radix_digit = get_radix_digit(keys.data[i], current_pass_radix_shift);
+
+                    const WAVE_MASK_TYPE same_bucket_lane_bit_mask_in_wave = ComputeSameBucketLaneBitMaskInWave(radix_digit);
+
+                    uint same_bucket_lane_prefix_count;
+                    uint same_bucket_lane_total_count;
+                    ComputePrefixTotalBitCountInWave(same_bucket_lane_bit_mask_in_wave, same_bucket_lane_prefix_count, same_bucket_lane_total_count);
+
+                    offsets.data[i] = group_shared[radix_digit] + same_bucket_lane_prefix_count;
+                    if (same_bucket_lane_prefix_count == 0u)
+                        group_shared[radix_digit] += same_bucket_lane_total_count;
+                }
+            }
+            GroupMemoryBarrierWithGroupSync();
+        }
+        return offsets;
     }
 
-    ItemsArray16bit offsets;
+    const uint wave_shared_memory_start = WAVE_INDEX(group_thread_id) * RADIX_BASE;
+    for (uint bucket_id = LANE_INDEX; bucket_id < RADIX_BASE; bucket_id += WAVE_SIZE)
+        group_shared[wave_shared_memory_start + bucket_id] = 0u;
+
     [unroll(ITEMS_PER_THREAD)]
     for (uint i = 0u; i < ITEMS_PER_THREAD; i++)
     {
@@ -153,10 +182,10 @@ inline ItemsArray16bit ComputeWaveLevelLocalOffsets(in uint group_thread_id, in 
         uint same_bucket_lane_total_count;
         ComputePrefixTotalBitCountInWave(same_bucket_lane_bit_mask_in_wave, same_bucket_lane_prefix_count, same_bucket_lane_total_count);
 
-        const uint shared_memory_address = radix_digit + WAVE_INDEX(group_thread_id) * RADIX_BASE;
+        const uint shared_memory_address = radix_digit + wave_shared_memory_start;
         const uint previous_loop_same_bucket_lane_total_count = group_shared[shared_memory_address];
         offsets.data[i] = previous_loop_same_bucket_lane_total_count + same_bucket_lane_prefix_count;
-        if (same_bucket_lane_prefix_count == 0)
+        if (same_bucket_lane_prefix_count == 0u)
             group_shared[shared_memory_address] += same_bucket_lane_total_count;
     }
     return offsets;
@@ -170,8 +199,10 @@ inline ItemsArray16bit ComputeWaveLevelLocalOffsets(in uint group_thread_id, in 
  */
 inline uint ExclusiveScanBucketCountsInGroup(in uint bucket_id)
 {
+    if (WAVE_SIZE == 8u)
+        return group_shared[bucket_id];
+
     uint bucket_total_count_in_group = group_shared[bucket_id];
-    [unroll(WAVE_COUNT_IN_GROUP(THREADS_PER_GROUP) - 1u)]
     for (uint i = bucket_id + RADIX_BASE; i < WAVE_COUNT_IN_GROUP(THREADS_PER_GROUP) * RADIX_BASE; i += RADIX_BASE)
     {
         bucket_total_count_in_group += group_shared[i];
@@ -188,6 +219,22 @@ inline uint ExclusiveScanBucketCountsInGroup(in uint bucket_id)
  */
 inline void ScanBucketTotalCountExclusiveToSharedMemory(in uint group_thread_id, in uint bucket_total_count_in_group) // group_thread_id = bucket_id
 {
+    if (WAVE_SIZE == 8u)
+    {
+        if (group_thread_id == 0u)
+        {
+            uint bucket_reduction = 0u;
+            [unroll(RADIX_BASE)]
+            for (uint bucket_id = 0u; bucket_id < RADIX_BASE; bucket_id++)
+            {
+                const uint bucket_count = group_shared[bucket_id];
+                group_shared[bucket_id] = bucket_reduction;
+                bucket_reduction += bucket_count;
+            }
+        }
+        return;
+    }
+
     bucket_total_count_in_group += WavePrefixSum(bucket_total_count_in_group); // inclusive scan
     // ((LANE_INDEX + 1u) & WAVE_SIZE_MASK) + (group_thread_id & ~WAVE_SIZE_MASK) means
     // 1, 2, .. , 31, 0, 33, 34, .. , 63, 32, 65, 66, .. , 95, 64, ...
@@ -209,6 +256,14 @@ inline void ScanBucketTotalCountExclusiveToSharedMemory(in uint group_thread_id,
  */
 inline void UpdateLocalOffsetsFromWaveToGroupLevel(in uint group_thread_id, in ItemsArray keys, inout ItemsArray16bit offsets)
 {
+    if (WAVE_SIZE == 8u)
+    {
+        [unroll(ITEMS_PER_THREAD)]
+        for (uint i = 0u; i < ITEMS_PER_THREAD; i++)
+            offsets.data[i] += group_shared[get_radix_digit(keys.data[i], current_pass_radix_shift)];
+        return;
+    }
+
     if (group_thread_id >= WAVE_SIZE) // WAVE_INDEX(group_thread_id) >= 1
     {
         const uint wave_offset = WAVE_INDEX(group_thread_id) * RADIX_BASE;
