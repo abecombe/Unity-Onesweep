@@ -1,0 +1,12 @@
+﻿#pragma kernel CheckWaveSize
+
+#pragma use_dxc
+#pragma require wavebasic
+
+RWStructuredBuffer<uint> result;
+
+[numthreads(1, 1, 1)]
+void CheckWaveSize()
+{
+    result[0] = WaveGetLaneCount();
+}
