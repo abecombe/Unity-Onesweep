@@ -41,6 +41,8 @@ uint current_pass_radix_shift;
 #define SHARED_MEMORY_MAX_SIZE (4096u) // 16KB
 groupshared uint group_shared[SHARED_MEMORY_MAX_SIZE];
 
+#include "../Common/WaveScan.hlsl"
+
 struct ItemsArray
 {
     uint data[ITEMS_PER_THREAD];
@@ -219,22 +221,6 @@ inline uint ExclusiveScanBucketCountsInGroup(in uint bucket_id)
  */
 inline void ScanBucketTotalCountExclusiveToSharedMemory(in uint group_thread_id, in uint bucket_total_count_in_group) // group_thread_id = bucket_id
 {
-    if (WAVE_SIZE == 8u)
-    {
-        if (group_thread_id == 0u)
-        {
-            uint bucket_reduction = 0u;
-            [unroll(RADIX_BASE)]
-            for (uint bucket_id = 0u; bucket_id < RADIX_BASE; bucket_id++)
-            {
-                const uint bucket_count = group_shared[bucket_id];
-                group_shared[bucket_id] = bucket_reduction;
-                bucket_reduction += bucket_count;
-            }
-        }
-        return;
-    }
-
     bucket_total_count_in_group += WavePrefixSum(bucket_total_count_in_group); // inclusive scan
     // ((LANE_INDEX + 1u) & WAVE_SIZE_MASK) + (group_thread_id & ~WAVE_SIZE_MASK) means
     // 1, 2, .. , 31, 0, 33, 34, .. , 63, 32, 65, 66, .. , 95, 64, ...
@@ -242,8 +228,14 @@ inline void ScanBucketTotalCountExclusiveToSharedMemory(in uint group_thread_id,
 
     GroupMemoryBarrierWithGroupSync();
 
-    if (group_thread_id < WAVE_COUNT_IN_GROUP(THREADS_PER_GROUP))
+    if (WAVE_SIZE == 8u)
+    {
+        ExclusiveScanWaveTotalsWave8(group_thread_id);
+    }
+    else if (group_thread_id < WAVE_COUNT_IN_GROUP(THREADS_PER_GROUP))
+    {
         group_shared[group_thread_id * WAVE_SIZE] = WavePrefixSum(group_shared[group_thread_id * WAVE_SIZE]);
+    }
 
     GroupMemoryBarrierWithGroupSync();
 
