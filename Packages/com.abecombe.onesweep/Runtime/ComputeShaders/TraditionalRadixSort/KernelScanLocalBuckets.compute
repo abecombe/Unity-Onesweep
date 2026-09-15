@@ -23,6 +23,8 @@ RWStructuredBuffer<uint> total_bucket_count_buffer; // size: RADIX_BASE
 
 groupshared uint group_shared[THREADS_PER_GROUP];
 
+#include "../Common/WaveScan.hlsl"
+
 /**
  * \brief Performs an exclusive scan (prefix sum) on the buffer of bucket counts.
  *
@@ -60,8 +62,14 @@ void ScanLocalBuckets(uint group_thread_id : SV_GroupThreadID, uint bucket_id : 
 
         GroupMemoryBarrierWithGroupSync();
 
-        if (group_thread_id < WAVE_COUNT_IN_GROUP(THREADS_PER_GROUP))
+        if (WAVE_SIZE == 8u)
+        {
+            ExclusiveScanWaveTotalsWave8(group_thread_id);
+        }
+        else if (group_thread_id < WAVE_COUNT_IN_GROUP(THREADS_PER_GROUP))
+        {
             group_shared[group_thread_id * WAVE_SIZE] = WavePrefixSum(group_shared[group_thread_id * WAVE_SIZE]);
+        }
 
         GroupMemoryBarrierWithGroupSync();
 
@@ -95,8 +103,14 @@ void ScanLocalBuckets(uint group_thread_id : SV_GroupThreadID, uint bucket_id : 
 
         GroupMemoryBarrierWithGroupSync();
 
-        if (group_thread_id < WAVE_COUNT_IN_GROUP(THREADS_PER_GROUP))
+        if (WAVE_SIZE == 8u)
+        {
+            ExclusiveScanWaveTotalsWave8(group_thread_id);
+        }
+        else if (group_thread_id < WAVE_COUNT_IN_GROUP(THREADS_PER_GROUP))
+        {
             group_shared[group_thread_id * WAVE_SIZE] = WavePrefixSum(group_shared[group_thread_id * WAVE_SIZE]);
+        }
 
         GroupMemoryBarrierWithGroupSync();
 

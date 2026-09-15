@@ -49,7 +49,7 @@ It is recommended as a robust alternative if you encounter issues with the Onesw
 * Unity 2022.3+
 * DirectX 12 as active graphics API (Windows only)
 * Compute Shader support
-* GPU with a supported wave size: **32** (NVIDIA) or **64** (AMD)
+* GPU with a supported wave size: **8**, **16**, **32**, or **64**
 
 ## 📦 Installation
 

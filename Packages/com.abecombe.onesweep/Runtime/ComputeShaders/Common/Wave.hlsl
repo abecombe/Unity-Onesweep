@@ -9,7 +9,7 @@
 //#pragma require wavebasic
 //#pragma require waveballot
 #define WAVE_SIZE (WaveGetLaneCount())
-#define WAVE_SHIFT ((WAVE_SIZE == 32u) ? 5u : 6u)
+#define WAVE_SHIFT (firstbithigh(WAVE_SIZE))
 #define WAVE_MASK_TYPE uint2
 #define LANE_INDEX (WaveGetLaneIndex())
 #define WAVE_INDEX(group_thread_index) ((group_thread_index) >> WAVE_SHIFT)

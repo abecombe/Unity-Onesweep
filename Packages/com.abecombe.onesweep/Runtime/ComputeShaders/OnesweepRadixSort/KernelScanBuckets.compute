@@ -22,6 +22,8 @@ RWStructuredBuffer<PARTITION_DESCRIPTOR> partition_descriptor_buffer; // size: R
 
 groupshared uint group_shared[RADIX_BASE];
 
+#include "../Common/WaveScan.hlsl"
+
 /**
  * \brief Performs an inclusive parallel scan on the global bucket counts for each radix sort pass.
  *
@@ -53,8 +55,14 @@ void ScanRadixBuckets(uint group_thread_id : SV_GroupThreadID, uint group_id : S
 
     GroupMemoryBarrierWithGroupSync();
 
-    if (group_thread_id < WAVE_COUNT_IN_GROUP(THREADS_PER_GROUP))
+    if (WAVE_SIZE == 8u)
+    {
+        ExclusiveScanWaveTotalsWave8(group_thread_id);
+    }
+    else if (group_thread_id < WAVE_COUNT_IN_GROUP(THREADS_PER_GROUP))
+    {
         group_shared[group_thread_id * WAVE_SIZE] = WavePrefixSum(group_shared[group_thread_id * WAVE_SIZE]);
+    }
 
     GroupMemoryBarrierWithGroupSync();
 

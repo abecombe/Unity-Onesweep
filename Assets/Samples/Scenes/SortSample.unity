@@ -170,7 +170,6 @@ MonoBehaviour:
   _sortMode: 1
   _dispatchMode: 0
   _useCommandBuffer: 0
-  _config: {fileID: 11400000, guid: ef59e34a479693946b5fd0aa03709fa6, type: 2}
   _dispatchOnlyCopyKernel: 0
 --- !u!1 &754477575
 GameObject:

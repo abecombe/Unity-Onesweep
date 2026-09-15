@@ -14,6 +14,8 @@ RWStructuredBuffer<uint> scanned_total_bucket_count_buffer; // size: RADIX_BASE
 
 groupshared uint group_shared[RADIX_BASE];
 
+#include "../Common/WaveScan.hlsl"
+
 /**
  * \brief Performs a prefix sum (scan) on the total element count for each bucket.
  *
@@ -40,8 +42,14 @@ void ScanGlobalBuckets(uint group_thread_id : SV_GroupThreadID)
 
     GroupMemoryBarrierWithGroupSync();
 
-    if (group_thread_id < WAVE_COUNT_IN_GROUP(THREADS_PER_GROUP))
+    if (WAVE_SIZE == 8u)
+    {
+        ExclusiveScanWaveTotalsWave8(group_thread_id);
+    }
+    else if (group_thread_id < WAVE_COUNT_IN_GROUP(THREADS_PER_GROUP))
+    {
         group_shared[group_thread_id * WAVE_SIZE] = WavePrefixSum(group_shared[group_thread_id * WAVE_SIZE]);
+    }
 
     GroupMemoryBarrierWithGroupSync();
 

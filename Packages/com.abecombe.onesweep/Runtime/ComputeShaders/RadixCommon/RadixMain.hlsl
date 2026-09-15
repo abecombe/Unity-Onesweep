@@ -95,7 +95,7 @@ inline ItemsArray LoadKeys(in uint group_thread_id, in uint group_id, in uint so
  */
 inline WAVE_MASK_TYPE ComputeSameBucketLaneBitMaskInWave(in uint radix_digit)
 {
-    WAVE_MASK_TYPE same_bucket_lane_bit_mask_in_wave = ALL_BITS_SET;
+    WAVE_MASK_TYPE same_bucket_lane_bit_mask_in_wave = WAVE_ACTIVE_LANE_MASK;
     [unroll(RADIX_BITS)]
     for (uint i = 0u; i < RADIX_BITS; i++)
     {
@@ -112,28 +112,18 @@ inline WAVE_MASK_TYPE ComputeSameBucketLaneBitMaskInWave(in uint radix_digit)
  */
 inline void ComputePrefixTotalBitCountInWave(in WAVE_MASK_TYPE bit_mask, out uint prefix_bit_count, out uint total_bit_count)
 {
-#if defined(WAVE_SIZE_32)
-    const uint lane_mask = (1u << LANE_INDEX) - 1u; // e.g., 00000000, 00000001, 00000011, 00000111, ... (grows with each lane index)
-    // The following code may cause undefined behavior if LANE_INDEX is 0:
-    // const uint lane_mask = 0xffffffffu >> (32u - LANE_INDEX);
-    prefix_bit_count = countbits(bit_mask & lane_mask);
-    total_bit_count = countbits(bit_mask);
-#elif defined(WAVE_SIZE_64)
-    uint2 lane_mask = NO_BITS_SET;
     if (LANE_INDEX < 32u)
     {
-        lane_mask.x = (1u << LANE_INDEX) - 1u;
+        const uint lane_mask = (1u << LANE_INDEX) - 1u;
+        prefix_bit_count = countbits(bit_mask.x & lane_mask);
     }
     else
     {
-        lane_mask.x = ALL_BITS_SET;
-        lane_mask.y = (1u << (LANE_INDEX - 32u)) - 1u;
+        const uint lane_mask = (1u << (LANE_INDEX - 32u)) - 1u;
+        prefix_bit_count = countbits(bit_mask.x) + countbits(bit_mask.y & lane_mask);
     }
-    uint2 count_temp = countbits(bit_mask & lane_mask);
-    prefix_bit_count = count_temp.x + count_temp.y;
-    count_temp = countbits(bit_mask);
+    const uint2 count_temp = countbits(bit_mask);
     total_bit_count = count_temp.x + count_temp.y;
-#endif
 }
 
 /**
