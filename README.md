@@ -1,67 +1,54 @@
-# Onesweep & Traditional - GPU Radix Sorter for Unity (DX12)
+# GPU Radix Sorter for Unity
 
-This package provides two fast GPU-based Least Significant Digit (LSD) Radix Sort implementations for Unity using Compute Shaders and DirectX 12:
+DirectX 12 compute-shader implementations of Least Significant Digit (LSD) radix sort for Unity.
 
-1.  **Onesweep**: Based on the paper [Onesweep: A Faster Least Significant Digit Radix Sort for GPUs](https://arxiv.org/abs/2206.01784).
-2.  **Traditional**: A more conventional multi-pass GPU radix sort.
+- `TraditionalSorter`: A conventional multi-pass implementation and the recommended default.
+- `OnesweepSorter`: Based on [Onesweep: A Faster Least Significant Digit Radix Sort for GPUs](https://arxiv.org/abs/2206.01784).
 
 Both sorters include code adapted from the [GPUSorting project by Thomas Smith](https://github.com/b0nes164/GPUSorting).
 
------
-
-## ⚠️ Important Notice: Algorithm Stability and Performance ⚠️
-
-### Onesweep Sorter
-
-**Potential for Deadlocks:**  
-Due to the nature of the Onesweep algorithm and its reliance on complex GPU synchronization (potentially involving device-wide atomics or specific inter-group communication patterns), there is a possibility of encountering GPU deadlocks. This can lead to application freezes (hangs) under certain runtime conditions. This issue may occur sporadically depending on various factors, including the specific GPU model, driver version, operating system, or conflicts with other running tasks. It is often related to the intricate scheduling and synchronization of GPU tasks.
-
-**Performance Instability:**  
-The performance of the **Onesweep** sorter can also be unstable. While it aims for high speed by minimizing passes, its actual performance may vary significantly based on the GPU architecture, driver, and the specific dataset being sorted.
-
-**If you experience frequent or unexplained application freezes or highly variable performance while using `OnesweepSorter`, please consider using the `TraditionalSorter` to see if the issue persists or if performance is more consistent.**
-
-We apologize for any inconvenience these potential risks may cause and appreciate your understanding.
+## Choosing an algorithm
 
 ### TraditionalSorter
 
-The **`TraditionalSorter`** implements a more conventional multi-pass GPU radix sort. This approach generally offers:
+`TraditionalSorter` does not use inter-group lookback, so it avoids this specific hang risk. Prefer it when reliability and predictable performance matter more than peak speed.
 
-* **Greater Stability**: Deadlocks or hangs related to complex, cutting-edge synchronization techniques do not occur with this sorter.
-* **More Predictable Performance**: While potentially not reaching the peak speeds of a perfectly functioning Onesweep on specific hardware, its performance is typically more consistent across different GPUs and scenarios.
+### OnesweepSorter
 
-It is recommended as a robust alternative if you encounter issues with the Onesweep implementation or require more predictable behavior.
+`OnesweepSorter` targets higher throughput, but its lookback step relies on forward progress between GPU thread groups. On hardware or drivers that do not provide sufficient progress, the loop may spin indefinitely and cause a GPU hang. Performance can also vary by GPU and workload.
 
------
+## Features
 
-## ✨ Features
+- GPU-accelerated Traditional and Onesweep radix sort implementations.
+- `uint`, `int`, and `float` keys.
+- Ascending and descending sort orders.
+- Key-only and key-payload sorting with `SortMode`.
+- Direct and indirect dispatch modes.
+- `GraphicsBuffer` input and output.
+- `CommandBuffer` support for rendering-pipeline integration.
 
-* GPU-accelerated LSD radix sort (both Onesweep and Traditional algorithms).
-* Supports `uint`, `int`, and `float` keys.
-* Ascending and descending sort orders.
-* Configurable `SortMode` (`KeyOnly` / `KeyPayload`): Supports optional payloads (must be in a separate 4-byte stride `GraphicsBuffer`).
-* Direct and indirect dispatch modes.
-* Works with Unity's `GraphicsBuffer` for input/output data.
-* Can be dispatched via `CommandBuffer` for integration into rendering pipelines.
+## Requirements
 
-## 🚀 Requirements
+- Unity 2022.3+
+- DirectX 12 as the active graphics API (Windows only)
+- Compute Shader support
+- A GPU wave size of 8, 16, 32, or 64
 
-* Unity 2022.3+
-* DirectX 12 as active graphics API (Windows only)
-* Compute Shader support
-* GPU with a supported wave size: **8**, **16**, **32**, or **64**
+Wave8 support is a compatibility path and favors a straightforward implementation over peak performance. Wave16, Wave32, and Wave64 use the regular per-wave path.
 
-## 📦 Installation
+## Installation
 
-1.  Open the Unity Package Manager
-2.  Click the **+** button
-3.  Select "**Add package from git URL...**"
-4.  Enter `https://github.com/abecombe/Unity-Onesweep.git?path=Packages/com.abecombe.onesweep`
+1. Open the Unity Package Manager.
+2. Click the **+** button.
+3. Select **Add package from git URL...**.
+4. Enter `https://github.com/abecombe/Unity-Onesweep.git?path=Packages/com.abecombe.onesweep`.
 
-## 🛠 Usage
+## Usage
 
-For more detailed usage examples, please refer to the sample scene included in this package.  
-**If you wish to accurately assess performance, it is recommended to create and run a standalone build, as performance figures in the Unity Editor may not be representative of final build performance.**
+See `Assets/Samples` for a complete example. The sample project also provides **Tools > Onesweep > Check Wave Size** in the Unity Editor.
+
+> For representative performance measurements, use a standalone build rather than the Unity Editor.
+
 ```csharp
 using Onesweep; // Namespace for the sorters
 using UnityEngine;
@@ -73,9 +60,8 @@ public class MySorterBehaviour : MonoBehaviour
     void Start()
     {
         // Choose the sorter implementation:
-        sorter = new OnesweepSorter(); // Use OnesweepSorter for high performance, but be aware of potential deadlocks and performance instability
-        // or
         sorter = new TraditionalSorter(); // Recommended for stability and predictable performance
+        // sorter = new OnesweepSorter(); // Use when peak performance is more important
 
         // Initialize the sorter, specifying the SortMode
         sorter.Init(
@@ -105,15 +91,15 @@ public class MySorterBehaviour : MonoBehaviour
 }
 ```
 
-## 📄 License
+## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
 
 This implementation includes code adapted from the [GPUSorting project by Thomas Smith](https://github.com/b0nes164/GPUSorting), also licensed under the MIT License.
 
-## 💬 Acknowledgements
+## References
 
-* [Onesweep (arXiv)](https://arxiv.org/abs/2206.01784)
-* [GPU Multisplit](https://madalgo.au.dk/fileadmin/madalgo/OA_PDF_s/C417.pdf)
-* [Fast 4-way parallel radix sorting on GPUs](http://www.sci.utah.edu/publications/Ha2009b/Ha_CGF2009.pdf)
-* [GPUSorting by Thomas Smith](https://github.com/b0nes164/GPUSorting)
+- [Onesweep (arXiv)](https://arxiv.org/abs/2206.01784)
+- [GPU Multisplit](https://madalgo.au.dk/fileadmin/madalgo/OA_PDF_s/C417.pdf)
+- [Fast 4-way parallel radix sorting on GPUs](http://www.sci.utah.edu/publications/Ha2009b/Ha_CGF2009.pdf)
+- [GPUSorting by Thomas Smith](https://github.com/b0nes164/GPUSorting)

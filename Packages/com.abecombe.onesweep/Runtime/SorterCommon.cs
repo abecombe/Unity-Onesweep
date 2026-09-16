@@ -10,15 +10,15 @@ namespace Onesweep
     public enum SortingAlgorithm
     {
         /// <summary>
-        /// The "Onesweep" algorithm, designed for high performance with potentially fewer passes.
-        /// May have stability or performance variability on some hardware/drivers.
-        /// </summary>
-        Onesweep = 0,
-        /// <summary>
         /// A conventional multi-pass radix sort algorithm, generally offering greater stability
         /// and more predictable performance.
         /// </summary>
-        Traditional
+        Traditional = 0,
+        /// <summary>
+        /// The "Onesweep" algorithm, designed for high performance with potentially fewer passes.
+        /// May have stability or performance variability on some hardware/drivers.
+        /// </summary>
+        Onesweep = 1
     }
 
     /// <summary>

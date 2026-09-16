@@ -2,16 +2,16 @@
 
 public class FpsSetter : MonoBehaviour
 {
-    [SerializeField] private int _targetFPS = 10000;
+    [SerializeField] private int _targetFps = 10000;
 
     private void Awake()
     {
-        SetFPS();
+        SetFps();
     }
 
-    private void SetFPS()
+    private void SetFps()
     {
         QualitySettings.vSyncCount  = 0;
-        Application.targetFrameRate = _targetFPS;
+        Application.targetFrameRate = _targetFps;
     }
 }

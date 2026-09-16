@@ -129,10 +129,13 @@ inline void ComputePrefixTotalBitCountInWave(in WAVE_MASK_TYPE bit_mask, out uin
 }
 
 /**
- * \brief Computes wave-level local offsets.
+ * \brief Computes local offsets for each item within its radix bucket.
  *
- * \note Writes to group_shared memory:
- *       [bucket_id (0–255) + WAVE_INDEX (0–7 or 0–3) * RADIX_BASE] stores the total count of each bucket ID within a wave.
+ * \note For Wave8, waves are processed sequentially and group_shared[bucket_id]
+ *       stores the bucket count accumulated across the whole thread group. The
+ *       returned offsets are therefore already group-level within each bucket.
+ *       For other supported wave sizes, group_shared[bucket_id + WAVE_INDEX * RADIX_BASE]
+ *       stores per-wave bucket counts and the returned offsets are wave-level.
  */
 inline ItemsArray16bit ComputeWaveLevelLocalOffsets(in uint group_thread_id, in ItemsArray keys)
 {
@@ -194,10 +197,12 @@ inline ItemsArray16bit ComputeWaveLevelLocalOffsets(in uint group_thread_id, in 
 }
 
 /**
- * \brief Computes the total count of each bucket ID in the thread group and performs an exclusive prefix scan.
+ * \brief Computes the total count of each bucket ID in the thread group and performs an exclusive prefix scan across waves.
  *
- * \note Writes to group_shared memory:
- *       [bucket_id (0–255) + WAVE_INDEX (1–7 or 1–3) * RADIX_BASE (256)] stores the exclusive prefix sum of each bucket ID across waves.
+ * \note For Wave8, ComputeWaveLevelLocalOffsets has already accumulated the
+ *       group total in group_shared[bucket_id], so this function only returns it.
+ *       For other supported wave sizes, per-wave bucket counts after the first
+ *       wave are replaced with their exclusive prefixes across waves.
  */
 inline uint ExclusiveScanBucketCountsInGroup(in uint bucket_id)
 {
@@ -218,6 +223,8 @@ inline uint ExclusiveScanBucketCountsInGroup(in uint bucket_id)
  *
  * \note Writes to group_shared memory:
  *       [bucket_id (0-255)] stores the exclusive prefix sum for each bucket.
+ *       Wave8 uses ExclusiveScanWaveTotalsWave8 for the second scan level;
+ *       other supported wave sizes scan all wave totals in the first wave.
  */
 inline void ScanBucketTotalCountExclusiveToSharedMemory(in uint group_thread_id, in uint bucket_total_count_in_group) // group_thread_id = bucket_id
 {
@@ -244,7 +251,11 @@ inline void ScanBucketTotalCountExclusiveToSharedMemory(in uint group_thread_id,
 }
 
 /**
- * \brief Combines per-wave local offsets to produce final group-level local offsets.
+ * \brief Produces final group-level local offsets.
+ *
+ * \note Wave8 offsets are already group-level within each bucket, so only the
+ *       bucket's group-level base is added. Other supported wave sizes also add
+ *       the exclusive count of matching items in preceding waves.
  */
 inline void UpdateLocalOffsetsFromWaveToGroupLevel(in uint group_thread_id, in ItemsArray keys, inout ItemsArray16bit offsets)
 {

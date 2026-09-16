@@ -16,6 +16,12 @@ internal static class WaveSizeChecker
             return;
         }
 
+        if (SystemInfo.graphicsDeviceType != UnityEngine.Rendering.GraphicsDeviceType.Direct3D12)
+        {
+            Debug.LogError($"Wave size check failed: DirectX 12 is required, but current Graphics API is {SystemInfo.graphicsDeviceType}.");
+            return;
+        }
+
         var computeShader = AssetDatabase.LoadAssetAtPath<ComputeShader>(ComputeShaderPath);
         if (computeShader == null)
         {

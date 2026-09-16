@@ -132,19 +132,10 @@
       }
     },
     "ga.fuquna.rosettaui": {
-      "version": "1.11.0",
-      "depth": 1,
-      "source": "registry",
-      "dependencies": {},
-      "url": "https://registry.npmjs.com"
-    },
-    "ga.fuquna.rosettaui.uitoolkit": {
-      "version": "1.9.2",
+      "version": "2.0.1",
       "depth": 0,
       "source": "registry",
-      "dependencies": {
-        "ga.fuquna.rosettaui": "1.11.0"
-      },
+      "dependencies": {},
       "url": "https://registry.npmjs.com"
     },
     "com.unity.modules.accessibility": {

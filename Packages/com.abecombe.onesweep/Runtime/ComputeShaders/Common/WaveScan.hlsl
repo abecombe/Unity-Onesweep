@@ -1,6 +1,12 @@
 ﻿#ifndef CS_COMMON_WAVE_SCAN_HLSL
 #define CS_COMMON_WAVE_SCAN_HLSL
 
+/**
+ * \brief Exclusively scans the Wave8 totals stored at the start of each wave's shared-memory range.
+ *
+ * \note The first Wave8 processes eight wave totals per iteration. On return,
+ *       group_shared[wave_index * 8] contains the sum of all preceding wave totals.
+ */
 inline void ExclusiveScanWaveTotalsWave8(in uint group_thread_id)
 {
     if (group_thread_id >= 8u)

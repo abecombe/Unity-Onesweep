@@ -13,12 +13,12 @@ using Random = UnityEngine.Random;
 
 using type = System.UInt32;
 
-public class SortSample : MonoBehaviour
+public class SortingSample : MonoBehaviour
 {
     [SerializeField] private int _numData = 100;
     [SerializeField] private int _randomValueMax = 100000;
     [SerializeField] private int _randomSeed = 0;
-    [SerializeField] private SortingAlgorithm _sortingAlgorithm = SortingAlgorithm.Onesweep;
+    [SerializeField] private SortingAlgorithm _sortingAlgorithm = SortingAlgorithm.Traditional;
     [SerializeField] private SortMode _sortMode = SortMode.KeyPayload;
     [SerializeField] private DispatchMode _dispatchMode = DispatchMode.Direct;
     [SerializeField] private bool _useCommandBuffer = false;
@@ -31,7 +31,7 @@ public class SortSample : MonoBehaviour
     private string RunningKernels => _dispatchOnlyCopyKernel ? "Copy" : "Copy & Sort";
 
     private ISorter _sorter;
-    private bool _successfllyInitialized = false;
+    private bool _successfullyInitialized = false;
 
     private GraphicsBuffer _keyBuffer;
     private GraphicsBuffer _payloadBuffer;
@@ -86,7 +86,7 @@ public class SortSample : MonoBehaviour
 
     private void Update()
     {
-        if (!_successfllyInitialized) return;
+        if (!_successfullyInitialized) return;
 
         if (_useCommandBuffer) _commandBuffer.Clear();
         DispatchCopyKernel();
@@ -112,7 +112,7 @@ public class SortSample : MonoBehaviour
 
     public void Init()
     {
-        _successfllyInitialized = false;
+        _successfullyInitialized = false;
 
         _currentSortingAlgorithm = _sortingAlgorithm;
         _currentSortMode = _sortMode;
@@ -123,8 +123,8 @@ public class SortSample : MonoBehaviour
 
         _sorter = _currentSortingAlgorithm switch
         {
-            SortingAlgorithm.Onesweep => new OnesweepSorter(),
             SortingAlgorithm.Traditional => new TraditionalSorter(),
+            SortingAlgorithm.Onesweep => new OnesweepSorter(),
             _ => throw new ArgumentOutOfRangeException(nameof(_currentSortingAlgorithm), _currentSortingAlgorithm, null)
         };
 
@@ -144,7 +144,7 @@ public class SortSample : MonoBehaviour
         _payloadTempBuffer = new GraphicsBuffer(GraphicsBuffer.Target.Structured, _currentNumData, sizeof(uint));
         _sortCountBuffer = new GraphicsBuffer(GraphicsBuffer.Target.Structured, 2, sizeof(uint));
         _sortCountBuffer.SetData(new[] { 0u, (uint)_currentNumData });
-        _commandBuffer = new CommandBuffer { name = "SortSampleCommandBuffer" };
+        _commandBuffer = new CommandBuffer { name = "SortingSampleCommandBuffer" };
 
         _keyArray = new type[_currentNumData];
         _payloadArray = new uint[_currentNumData];
@@ -164,7 +164,7 @@ public class SortSample : MonoBehaviour
         _copyCs = Resources.Load<ComputeShader>("Copy");
         _copyKernel = _copyCs.FindKernel("CopySortBuffer");
 
-        _successfllyInitialized = true;
+        _successfullyInitialized = true;
     }
 
     private void DispatchCopyKernel()
@@ -225,7 +225,7 @@ public class SortSample : MonoBehaviour
     {
         Init();
 
-        if (!_successfllyInitialized)
+        if (!_successfullyInitialized)
         {
             Debug.LogError("Sorter initialization failed. Cannot check success.");
             return;
@@ -271,36 +271,37 @@ public class SortSample : MonoBehaviour
     private Element CreateElement()
     {
         return UI.Window(
-            UI.Label("<b>Sort Sample</b>").SetWidth(200f),
-            UI.Box().SetHeight(5f).SetBackgroundColor(Color.gray),
-            UI.Field("Data Count", () => _numData),
-            UI.FieldReadOnly("Current Data Count", () => _currentNumData),
-            UI.Space().SetHeight(10f),
-            UI.Field("Max Random Value", () => _randomValueMax),
-            UI.Field("Random Seed", () => _randomSeed),
-            UI.Space().SetHeight(10f),
-            UI.Field("Sorting Algorithm", () => _sortingAlgorithm),
-            UI.FieldReadOnly("Current Sorting Algorithm", () => _currentSortingAlgorithm),
-            UI.Space().SetHeight(10f),
-            UI.Field("Sort Mode", () => _sortMode),
-            UI.FieldReadOnly("Current Sort Mode", () => _currentSortMode),
-            UI.Space().SetHeight(10f),
-            UI.Field("Dispatch Mode", () => _dispatchMode),
-            UI.FieldReadOnly("Current Dispatch Mode", () => _currentDispatchMode),
-            UI.Space().SetHeight(10f),
-            UI.Field("Use Command Buffer", () => _useCommandBuffer),
-            UI.Space().SetHeight(10f),
-            UI.Field("Dispatch Only Copy Kernel", () => _dispatchOnlyCopyKernel),
-            UI.FieldReadOnly("Running Kernels", () => RunningKernels),
-            UI.Space().SetHeight(10f),
-            UI.Button("Reinit", Init)
+            UI.Label("<b>Sorting Sample</b>").SetWidth(200f),
+            UI.Box(
+                UI.Button("Apply Settings", Init).SetBackgroundColor(Color.green * 0.4f).SetColor(Color.white),
+                UI.Space().SetHeight(5f),
+                UI.Field("Data Count", () => _numData),
+                UI.FieldReadOnly("Current", () => _currentNumData),
+                UI.Space().SetHeight(5f),
+                UI.Field("Max Random Value", () => _randomValueMax),
+                UI.Field("Random Seed", () => _randomSeed),
+                UI.Space().SetHeight(5f),
+                UI.Field("Sorting Algorithm", () => _sortingAlgorithm),
+                UI.FieldReadOnly("Current", () => _currentSortingAlgorithm),
+                UI.Space().SetHeight(5f),
+                UI.Field("Sort Mode", () => _sortMode),
+                UI.FieldReadOnly("Current", () => _currentSortMode),
+                UI.Space().SetHeight(5f),
+                UI.Field("Dispatch Mode", () => _dispatchMode),
+                UI.FieldReadOnly("Current", () => _currentDispatchMode),
+                UI.Space().SetHeight(5f),
+                UI.Field("Use Command Buffer", () => _useCommandBuffer),
+                UI.Space().SetHeight(5f),
+                UI.Field("Dispatch Only Copy Kernel", () => _dispatchOnlyCopyKernel),
+                UI.FieldReadOnly("Running Kernels", () => RunningKernels)
+            )
         ).SetClosable(false);
     }
 }
 
 #if UNITY_EDITOR
-[CustomEditor(typeof(SortSample))]
-public class SortSampleEditor : Editor
+[CustomEditor(typeof(SortingSample))]
+public class SortingSampleEditor : Editor
 {
     public override void OnInspectorGUI()
     {
@@ -309,10 +310,10 @@ public class SortSampleEditor : Editor
 
         if (Application.isPlaying)
         {
-            if (GUILayout.Button("Reinit"))
+            if (GUILayout.Button("Apply Settings"))
             {
-                var sortSample = target as SortSample;
-                sortSample.Init();
+                var sortingSample = target as SortingSample;
+                sortingSample.Init();
             }
         }
 
@@ -320,8 +321,8 @@ public class SortSampleEditor : Editor
         {
             if (GUILayout.Button("Check Success"))
             {
-                var sortSample = target as SortSample;
-                sortSample.CheckSuccess();
+                var sortingSample = target as SortingSample;
+                sortingSample.CheckSuccess();
             }
         }
     }

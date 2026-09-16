@@ -574,8 +574,9 @@ namespace Onesweep
         /// </summary>
         public void Dispose()
         {
-            ReleaseBuffers();
             Inited = false;
+            ReleaseBuffers();
+            DestroyComputeShaders();
         }
         #endregion
 
@@ -594,6 +595,36 @@ namespace Onesweep
             _sortCountGroupCountBuffer?.Release(); _sortCountGroupCountBuffer = null;
             _countKernelDispatchArgsBuffer?.Release(); _countKernelDispatchArgsBuffer = null;
             _sortKernelDispatchArgsBuffer?.Release(); _sortKernelDispatchArgsBuffer = null;
+        }
+
+        /// <summary>
+        /// Destroys all instantiated compute shaders.
+        /// </summary>
+        private void DestroyComputeShaders()
+        {
+            DestroyComputeShader(ref _precomputeCs);
+            DestroyComputeShader(ref _countCs);
+            DestroyComputeShader(ref _scanLocalCs);
+            DestroyComputeShader(ref _scanGlobalCs);
+            DestroyComputeShader(ref _sortCs);
+            _computeShaders = null;
+        }
+
+        private static void DestroyComputeShader(ref ComputeShader computeShader)
+        {
+            if (computeShader == null) return;
+
+#if UNITY_EDITOR
+            if (!Application.isPlaying)
+            {
+                Object.DestroyImmediate(computeShader);
+                computeShader = null;
+                return;
+            }
+#endif
+
+            Object.Destroy(computeShader);
+            computeShader = null;
         }
         #endregion
     }
